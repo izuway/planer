@@ -1,0 +1,41 @@
+{
+	"name": "planer",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && vite build",
+		"lint": "eslint .",
+		"preview": "npm run build && vite preview",
+		"deploy": "npm run build && wrangler deploy",
+		"cf-typegen": "wrangler types",
+		"cap:build": "vite build --config vite.capacitor.config.ts && npx cap sync",
+		"cap:android": "npm run cap:build && npx cap open android",
+		"cap:run:android": "npm run cap:build && npx cap run android",
+		"cap:sync": "npx cap sync"
+	},
+	"dependencies": {
+		"@capacitor/android": "^7.4.4",
+		"@capacitor/cli": "^7.4.4",
+		"@capacitor/core": "^7.4.4",
+		"react": "^19.1.1",
+		"react-dom": "^19.1.1"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.13.17",
+		"@eslint/js": "^9.33.0",
+		"@types/react": "^19.1.10",
+		"@types/react-dom": "^19.1.7",
+		"@vitejs/plugin-react": "^5.0.0",
+		"cross-env": "^10.1.0",
+		"eslint": "^9.33.0",
+		"eslint-plugin-react-hooks": "^5.2.0",
+		"eslint-plugin-react-refresh": "^0.4.20",
+		"globals": "^16.3.0",
+		"typescript": "~5.8.3",
+		"typescript-eslint": "^8.39.1",
+		"vite": "^7.1.2",
+		"wrangler": "^4.45.2"
+	}
+}

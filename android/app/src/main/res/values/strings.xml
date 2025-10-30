@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">planer</string>
+    <string name="title_activity_main">planer</string>
+    <string name="package_name">com.example.planer</string>
+    <string name="custom_url_scheme">com.example.planer</string>
+</resources>
