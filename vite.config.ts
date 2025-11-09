@@ -5,24 +5,10 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), cloudflare()],
-  base: './',
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'esbuild',
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
-      },
+  plugins: [react(), cloudflare({
+    experimental: {
+      remoteBindings: true,
     },
-  },
-  define: {
-    global: 'globalThis',
-  },
-  server: {
-    host: '0.0.0.0',
-    port: 3000,
-  },
+  })],
+
 })

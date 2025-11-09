@@ -17,7 +17,14 @@
  "vars":
  	{
  		"My_NAME": "Malik"
- 	}
+ 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "planer-db",
+			"database_id": "e19445cf-9a86-4044-bed0-48eab886707c"
+		}
+	]
 
 	// "placement": { "mode": "smart" }
 	/**
