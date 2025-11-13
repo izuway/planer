@@ -6,8 +6,8 @@ import {
   signOut,
   sendEmailVerification,
   onAuthStateChanged,
-  User,
 } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
 // Firebase configuration
 // Replace these values with your actual Firebase project configuration

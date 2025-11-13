@@ -58,7 +58,7 @@ export const requireAuth = async (c: Context<AppEnv>, next: Next) => {
     c.set('user', {
       uid: idToken.uid,
       email: idToken.email || null,
-      email_verified: idToken.email_verified,
+      email_verified: idToken.email_verified || false,
       name: idToken.name,
       picture: idToken.picture,
     });
@@ -84,7 +84,7 @@ export const optionalAuth = async (c: Context<AppEnv>, next: Next) => {
       c.set('user', {
         uid: idToken.uid,
         email: idToken.email || null,
-        email_verified: idToken.email_verified,
+        email_verified: idToken.email_verified || false,
         name: idToken.name,
         picture: idToken.picture,
       });

@@ -22,7 +22,7 @@ auth.post('/verify', async (c) => {
     const user: FirebaseUser = {
       uid: idToken.uid,
       email: idToken.email || null,
-      email_verified: idToken.email_verified,
+      email_verified: idToken.email_verified || false,
       name: idToken.name,
       picture: idToken.picture,
     };
@@ -30,7 +30,7 @@ auth.post('/verify', async (c) => {
     return c.json({ 
       success: true,
       user,
-      emailVerified: idToken.email_verified
+      emailVerified: idToken.email_verified || false
     });
   } catch (error) {
     console.error('Token verification error:', error);
@@ -71,7 +71,7 @@ auth.get('/me', async (c) => {
     const user: FirebaseUser = {
       uid: idToken.uid,
       email: idToken.email || null,
-      email_verified: idToken.email_verified,
+      email_verified: idToken.email_verified || false,
       name: idToken.name,
       picture: idToken.picture,
     };
@@ -104,7 +104,7 @@ auth.get('/email-status', async (c) => {
 
     return c.json({ 
       success: true,
-      emailVerified: idToken.email_verified,
+      emailVerified: idToken.email_verified || false,
       email: idToken.email
     });
   } catch (error) {
