@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './types';
 import versions from './routes/versions';
-import { logger, requestId } from './middleware';
+import auth from './routes/auth';
+import { logger, requestId, verifyFirebaseAuth, type VerifyFirebaseAuthConfig } from './middleware';
 
 // Create Hono app with typed environment
 const app = new Hono<{ Bindings: Env }>();
@@ -27,8 +28,21 @@ app.onError((err, c) => {
   }, 500);
 });
 
-// API Routes
+// Firebase Auth configuration
+const firebaseConfig: VerifyFirebaseAuthConfig = {
+  projectId: 'planer-246d3',
+  disableErrorLog: false,
+};
+
+// Public routes (no auth required)
+const publicApi = new Hono<{ Bindings: Env }>();
+publicApi.route('/auth', auth);
+
+// Protected API Routes (require Firebase auth)
 const api = new Hono<{ Bindings: Env }>();
+
+// Apply Firebase Auth middleware to all protected routes
+api.use('*', verifyFirebaseAuth(firebaseConfig));
 
 // Mount version routes
 api.route('/versions', versions);
@@ -43,6 +57,7 @@ api.get('/*', async (c) => {
 });
 
 // Mount API routes
+app.route('/api/public', publicApi);
 app.route('/api', api);
 
 // 404 handler

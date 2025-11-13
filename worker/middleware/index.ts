@@ -21,27 +21,9 @@ export const requestId = async (c: Context, next: Next) => {
 };
 
 /**
- * Example: Auth middleware for Firebase JWT validation
- * Uncomment and implement when Firebase Auth is configured
+ * Export Firebase Auth utilities
+ * These will be configured in the main app file
  */
-/*
-export const authMiddleware = async (c: Context<{ Bindings: Env }>, next: Next) => {
-  const authHeader = c.req.header('Authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'Unauthorized' }, 401);
-  }
-
-  const token = authHeader.substring(7);
-  
-  try {
-    // TODO: Validate Firebase JWT token here
-    // const decodedToken = await verifyFirebaseToken(token);
-    // c.set('user', decodedToken);
-    await next();
-  } catch (error) {
-    return c.json({ error: 'Invalid token' }, 401);
-  }
-};
-*/
+export { verifyFirebaseAuth, getFirebaseToken } from '@hono/firebase-auth';
+export type { VerifyFirebaseAuthConfig, VerifyFirebaseAuthEnv } from '@hono/firebase-auth';
 

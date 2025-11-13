@@ -44,5 +44,7 @@ export interface AppVersion {
 export interface Env {
   DB: D1Database;
   My_NAME: string;
+  PUBLIC_JWK_CACHE_KEY?: string;
+  PUBLIC_JWK_CACHE_KV?: any;
 }
 

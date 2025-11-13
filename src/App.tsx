@@ -42,10 +42,14 @@ import {
   CalendarMonth as CalendarIcon,
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material'
+import { useAuth } from './context/AuthContext'
 import './App.css'
 
 function App() {
+  const { user, logout } = useAuth();
+  
   // Определяем системную тему
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
   
@@ -58,6 +62,14 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [navigationValue, setNavigationValue] = useState(0)
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  }
 
   // Сохраняем выбор темы в localStorage
   useEffect(() => {
@@ -169,7 +181,7 @@ function App() {
               }
             >
               <Avatar alt="User Avatar" sx={{ bgcolor: 'secondary.main' }}>
-                U
+                {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
               </Avatar>
             </Badge>
           </Box>
@@ -186,12 +198,14 @@ function App() {
         >
           <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
             <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
-              <PersonIcon />
+              {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
             </Avatar>
             <Box>
-              <Typography variant="h6">Иван Иванов</Typography>
+              <Typography variant="h6">
+                {user?.displayName || 'Пользователь'}
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                ivan@example.com
+                {user?.email}
               </Typography>
             </Box>
           </Box>
@@ -227,6 +241,14 @@ function App() {
                   'aria-label': 'переключатель темы',
                 }}
               />
+            </ListItem>
+            <ListItem disablePadding>
+              <ListItemButton onClick={handleLogout}>
+                <ListItemIcon>
+                  <LogoutIcon />
+                </ListItemIcon>
+                <ListItemText primary="Выйти" />
+              </ListItemButton>
             </ListItem>
           </List>
         </Box>
