@@ -1,91 +1,90 @@
-import { getCurrentUserToken } from '../firebase';
-
-const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://planer.m-k-mendykhan.workers.dev/api'
-  : '/api';
+/**
+ * API utility functions with Firebase Auth integration
+ */
 
 /**
- * Make authenticated API request
+ * Get the Firebase auth token from localStorage
  */
-export const apiRequest = async (
+const getAuthToken = (): string | null => {
+  return localStorage.getItem('firebaseToken');
+};
+
+/**
+ * Make an authenticated API request
+ * @param endpoint - API endpoint (e.g., '/api/profile')
+ * @param options - Fetch options
+ */
+export const authenticatedFetch = async (
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> => {
-  const token = await getCurrentUserToken();
-  
-  const headers = new Headers(options.headers);
-  
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+  const token = getAuthToken();
+
+  if (!token) {
+    throw new Error('No authentication token found');
   }
-  
-  headers.set('Content-Type', 'application/json');
-  
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers,
+  };
+
+  const response = await fetch(endpoint, {
     ...options,
     headers,
   });
-  
+
+  // If unauthorized, token might be expired
+  if (response.status === 401) {
+    localStorage.removeItem('firebaseToken');
+    throw new Error('Authentication expired. Please sign in again.');
+  }
+
   return response;
 };
 
 /**
- * GET request
+ * Make a public API request (no auth required)
+ * @param endpoint - API endpoint
+ * @param options - Fetch options
  */
-export const get = async (endpoint: string): Promise<any> => {
-  const response = await apiRequest(endpoint, {
-    method: 'GET',
+export const publicFetch = async (
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> => {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  return fetch(endpoint, {
+    ...options,
+    headers,
   });
+};
+
+/**
+ * Example: Get user profile (protected endpoint)
+ */
+export const getUserProfile = async () => {
+  const response = await authenticatedFetch('/api/profile');
   
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    throw new Error('Failed to fetch user profile');
   }
   
   return response.json();
 };
 
 /**
- * POST request
+ * Example: Get app versions (public endpoint)
  */
-export const post = async (endpoint: string, data?: any): Promise<any> => {
-  const response = await apiRequest(endpoint, {
-    method: 'POST',
-    body: data ? JSON.stringify(data) : undefined,
-  });
+export const getAppVersions = async () => {
+  const response = await publicFetch('/api/versions');
   
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-  }
-  
-  return response.json();
-};
-
-/**
- * PUT request
- */
-export const put = async (endpoint: string, data?: any): Promise<any> => {
-  const response = await apiRequest(endpoint, {
-    method: 'PUT',
-    body: data ? JSON.stringify(data) : undefined,
-  });
-  
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-  }
-  
-  return response.json();
-};
-
-/**
- * DELETE request
- */
-export const del = async (endpoint: string): Promise<any> => {
-  const response = await apiRequest(endpoint, {
-    method: 'DELETE',
-  });
-  
-  if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    throw new Error('Failed to fetch app versions');
   }
   
   return response.json();

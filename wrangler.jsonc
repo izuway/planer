@@ -16,9 +16,7 @@
 	,
  "vars":
  	{
- 		"My_NAME": "Malik",
-		"FIREBASE_PROJECT_ID": "planer-246d3",
-		"PUBLIC_JWK_CACHE_KEY": "firebase-public-jwk"
+ 		"My_NAME": "Malik"
  	},
 	"d1_databases": [
 		{
@@ -27,15 +25,12 @@
 			"database_id": "e19445cf-9a86-4044-bed0-48eab886707c"
 		}
 	],
-	// Temporarily disabled until KV namespace is created
-	// Run: npx wrangler kv:namespace create "PUBLIC_JWK_CACHE_KV"
-	// Then uncomment and add the ID
-	// "kv_namespaces": [
-	// 	{
-	// 		"binding": "PUBLIC_JWK_CACHE_KV",
-	// 		"id": "YOUR_KV_NAMESPACE_ID_HERE"
-	// 	}
-	// ]
+	"kv_namespaces": [
+		{
+			"binding": "PUBLIC_JWK_CACHE_KV",
+			"id": "YOUR_KV_ID_HERE"
+		}
+	]
 
 	// "placement": { "mode": "smart" }
 	/**

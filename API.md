@@ -4,16 +4,35 @@ API для управления версиями приложения с исп�
 
 ## Base URL
 ```
-http://localhost:8787 (dev)
-https://your-worker.workers.dev (production)
+http://localhost:5173 (dev - frontend)
+http://localhost:8787 (dev - worker)
+https://planer.m-k-mendykhan.workers.dev (production)
 ```
+
+## Authentication
+
+Приложение использует Firebase Authentication с обязательной проверкой email.
+
+- **Публичные endpoints**: Доступны без авторизации
+- **Защищенные endpoints**: Требуют JWT токен в заголовке `Authorization: Bearer <token>`
+
+Для работы с защищенными endpoints необходимо:
+1. Зарегистрироваться через `/register`
+2. Подтвердить email
+3. Войти через `/login`
+4. Использовать полученный токен для API запросов
+
+Подробности в [QUICK_START_AUTH.md](./QUICK_START_AUTH.md)
 
 ## Endpoints
 
-### 1. Get All Versions
+### Public Endpoints (без авторизации)
+
+#### 1. Get All Versions
 Получить список всех версий приложения, отсортированных по дате релиза (новые первыми).
 
-**Endpoint:** `GET /api/versions`
+**Endpoint:** `GET /api/versions`  
+**Auth:** Not required
 
 **Response:**
 ```json
@@ -46,10 +65,11 @@ https://your-worker.workers.dev (production)
 }
 ```
 
-### 2. Get Latest Version
+#### 2. Get Latest Version
 Получить последнюю версию приложения.
 
-**Endpoint:** `GET /api/versions/latest`
+**Endpoint:** `GET /api/versions/latest`  
+**Auth:** Not required
 
 **Response:**
 ```json
@@ -66,11 +86,11 @@ https://your-worker.workers.dev (production)
 }
 ```
 
-### 3. Get Specific Version
+#### 3. Get Specific Version
 Получить информацию о конкретной версии по номеру версии.
 
-**Endpoint:** `GET /api/versions/{version}`
-
+**Endpoint:** `GET /api/versions/{version}`  
+**Auth:** Not required  
 **Example:** `GET /api/versions/1.0.0`
 
 **Response:**
@@ -93,6 +113,62 @@ https://your-worker.workers.dev (production)
 {
   "error": "Version not found",
   "version": "2.0.0"
+}
+```
+
+#### 4. Test Endpoint
+Тестовый публичный endpoint.
+
+**Endpoint:** `GET /api/test`  
+**Auth:** Not required
+
+**Response:**
+```json
+{
+  "name": "Malik",
+  "message": "Public endpoint - no auth required"
+}
+```
+
+### Protected Endpoints (требуется авторизация)
+
+Все защищенные endpoints требуют JWT токен в заголовке:
+```
+Authorization: Bearer <your_firebase_token>
+```
+
+#### 1. Get User Profile
+Получить профиль текущего авторизованного пользователя.
+
+**Endpoint:** `GET /api/profile`  
+**Auth:** Required  
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+{
+  "message": "This is a protected endpoint",
+  "user": {
+    "uid": "user_firebase_uid",
+    "email": "user@example.com",
+    "email_verified": true
+  }
+}
+```
+
+**Error Response (401 - No token):**
+```json
+{
+  "error": "Unauthorized",
+  "message": "Invalid or expired token"
+}
+```
+
+**Error Response (403 - Email not verified):**
+```json
+{
+  "error": "Email not verified",
+  "message": "Please verify your email address before accessing the application"
 }
 ```
 
@@ -133,34 +209,66 @@ API использует [Hono](https://hono.dev/) - легкий и быстр�
 
 ### Using curl
 
+#### Public Endpoints
 ```bash
 # Get all versions
-curl http://localhost:8787/api/versions
+curl https://planer.m-k-mendykhan.workers.dev/api/versions
 
 # Get latest version
-curl http://localhost:8787/api/versions/latest
+curl https://planer.m-k-mendykhan.workers.dev/api/versions/latest
 
 # Get specific version
-curl http://localhost:8787/api/versions/1.0.0
+curl https://planer.m-k-mendykhan.workers.dev/api/versions/1.0.0
+
+# Test endpoint
+curl https://planer.m-k-mendykhan.workers.dev/api/test
+```
+
+#### Protected Endpoints
+```bash
+# Get user profile (требуется токен)
+curl -H "Authorization: Bearer YOUR_FIREBASE_TOKEN" \
+  https://planer.m-k-mendykhan.workers.dev/api/profile
 ```
 
 ### Using JavaScript (fetch)
 
+#### Public Endpoints
 ```javascript
 // Get all versions
-const versions = await fetch('http://localhost:8787/api/versions')
+const versions = await fetch('https://planer.m-k-mendykhan.workers.dev/api/versions')
   .then(res => res.json());
 console.log(versions);
 
 // Get latest version
-const latest = await fetch('http://localhost:8787/api/versions/latest')
+const latest = await fetch('https://planer.m-k-mendykhan.workers.dev/api/versions/latest')
   .then(res => res.json());
 console.log(latest);
+```
 
-// Get specific version
-const v1 = await fetch('http://localhost:8787/api/versions/1.0.0')
-  .then(res => res.json());
-console.log(v1);
+#### Protected Endpoints
+```javascript
+// Get user profile (с авторизацией)
+const token = localStorage.getItem('firebaseToken');
+
+const profile = await fetch('https://planer.m-k-mendykhan.workers.dev/api/profile', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+}).then(res => res.json());
+console.log(profile);
+```
+
+#### Using utility functions (рекомендуется)
+```javascript
+import { authenticatedFetch, getUserProfile } from './utils/api';
+
+// Вариант 1: напрямую
+const response = await authenticatedFetch('/api/profile');
+const data = await response.json();
+
+// Вариант 2: готовая функция
+const profile = await getUserProfile();
 ```
 
 ## Development

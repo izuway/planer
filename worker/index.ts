@@ -1,22 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { verifyFirebaseAuth } from '@hono/firebase-auth';
-import type { VerifyFirebaseAuthConfig, VerifyFirebaseAuthEnv } from '@hono/firebase-auth';
-import type { Env, FirebaseUser } from './types';
+import type { Env, Variables } from './types';
 import versions from './routes/versions';
-import auth from './routes/auth';
-import { logger, requestId, requireAuth } from './middleware';
+import { logger, requestId, authMiddleware } from './middleware';
 
 // Create Hono app with typed environment
-type AppEnv = {
-  Bindings: Env & VerifyFirebaseAuthEnv;
-  Variables: {
-    user?: FirebaseUser;
-    requestId?: string;
-  };
-};
-
-const app = new Hono<AppEnv>();
+const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Global middleware
 app.use('/*', logger);
@@ -29,23 +18,6 @@ app.use('/*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Firebase Auth middleware for all routes
-app.use('/*', async (c, next) => {
-  // Skip auth for health check and public routes
-  const path = c.req.path;
-  if (path === '/' || path === '/health') {
-    return next();
-  }
-  
-  const config: VerifyFirebaseAuthConfig = {
-    projectId: c.env.FIREBASE_PROJECT_ID || 'planer-97a3b',
-    authorizationHeaderKey: 'Authorization',
-    disableErrorLog: false,
-  };
-  
-  return verifyFirebaseAuth(config)(c, next);
-});
-
 // Global error handler
 app.onError((err, c) => {
   console.error('Error:', err);
@@ -56,36 +28,49 @@ app.onError((err, c) => {
 });
 
 // API Routes
-const api = new Hono<AppEnv>();
+const api = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// Auth routes (public)
-api.route('/auth', auth);
-
-// Protected routes - require email verification
-api.use('/versions/*', requireAuth);
-api.route('/versions', versions);
+// Public routes (no auth required)
+const publicApi = new Hono<{ Bindings: Env; Variables: Variables }>();
+publicApi.route('/versions', versions);
 
 /**
- * Health check endpoint
+ * Legacy test endpoint - public
  */
-app.get('/health', (c) => {
-  return c.json({ 
-    status: 'ok',
-    timestamp: new Date().toISOString(),
+publicApi.get('/test', async (c) => {
+  return c.json({
+    name: c.env.My_NAME,
+    message: 'Public endpoint - no auth required',
   });
 });
 
+// Protected routes (auth required)
+const protectedApi = new Hono<{ Bindings: Env; Variables: Variables }>();
+protectedApi.use('/*', authMiddleware);
+
 /**
- * Protected test endpoint
+ * Protected test endpoint - requires authentication
  */
-api.get('/test', requireAuth, async (c) => {
+protectedApi.get('/profile', async (c) => {
   const user = c.get('user');
+  
+  if (!user) {
+    return c.json({ error: 'User not found' }, 401);
+  }
+  
   return c.json({
     message: 'This is a protected endpoint',
-    user: user,
-    name: c.env.My_NAME,
+    user: {
+      uid: user.uid,
+      email: user.email,
+      email_verified: user.email_verified,
+    },
   });
 });
+
+// Mount all API routes
+api.route('/', publicApi);
+api.route('/', protectedApi);
 
 // Mount API routes
 app.route('/api', api);

@@ -1,74 +1,139 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import type { ReactNode } from 'react';
-import type { User } from 'firebase/auth';
-import { auth, subscribeToAuthChanges, getCurrentUserToken } from '../firebase';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  User,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  sendEmailVerification,
+  ActionCodeSettings,
+} from 'firebase/auth';
+import { auth } from '../config/firebase';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  emailVerified: boolean;
-  token: string | null;
-  refreshToken: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  sendVerificationEmail: () => Promise<void>;
+  getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
 
 interface AuthProviderProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
-export const AuthProvider = ({ children }: AuthProviderProps) => {
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState<string | null>(null);
-
-  const refreshToken = async () => {
-    if (auth.currentUser) {
-      const newToken = await getCurrentUserToken();
-      setToken(newToken);
-    }
-  };
 
   useEffect(() => {
-    const unsubscribe = subscribeToAuthChanges(async (firebaseUser) => {
+    // Subscribe to auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        // Get and store the token
-        const userToken = await getCurrentUserToken();
-        setToken(userToken);
-        
-        // Refresh token periodically (every 55 minutes, as Firebase tokens expire after 1 hour)
-        const tokenRefreshInterval = setInterval(async () => {
-          await refreshToken();
-        }, 55 * 60 * 1000);
-
-        return () => clearInterval(tokenRefreshInterval);
-      } else {
-        setToken(null);
-        localStorage.removeItem('firebase_token');
-      }
-      
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  const value = {
+  const signIn = async (email: string, password: string) => {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Check if email is verified
+      if (!result.user.emailVerified) {
+        throw new Error('Please verify your email before signing in');
+      }
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+  };
+
+  const signUp = async (email: string, password: string) => {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Send verification email immediately after signup
+      await sendVerificationEmail();
+      
+      // Sign out user until they verify their email
+      await firebaseSignOut(auth);
+      
+      return result;
+    } catch (error: any) {
+      console.error('Sign up error:', error);
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+      // Clear any cached tokens
+      localStorage.removeItem('firebaseToken');
+    } catch (error: any) {
+      console.error('Sign out error:', error);
+      throw error;
+    }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (!auth.currentUser) {
+      throw new Error('No user is currently signed in');
+    }
+
+    try {
+      // Action code settings - redirect to your app after email verification
+      const actionCodeSettings: ActionCodeSettings = {
+        url: 'https://planer.m-k-mendykhan.workers.dev/',
+        handleCodeInApp: true,
+      };
+
+      await sendEmailVerification(auth.currentUser, actionCodeSettings);
+    } catch (error: any) {
+      console.error('Send verification email error:', error);
+      throw error;
+    }
+  };
+
+  const getIdToken = async (): Promise<string | null> => {
+    if (!user) return null;
+    
+    try {
+      // Get fresh token (with force refresh if needed)
+      const token = await user.getIdToken(true);
+      
+      // Cache token in localStorage for API calls
+      localStorage.setItem('firebaseToken', token);
+      
+      return token;
+    } catch (error) {
+      console.error('Error getting ID token:', error);
+      return null;
+    }
+  };
+
+  const value: AuthContextType = {
     user,
     loading,
-    emailVerified: user?.emailVerified || false,
-    token,
-    refreshToken,
+    signIn,
+    signUp,
+    signOut,
+    sendVerificationEmail,
+    getIdToken,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
