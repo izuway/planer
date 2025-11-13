@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  User,
+  type User,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   sendEmailVerification,
-  ActionCodeSettings,
+  type ActionCodeSettings,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
@@ -64,15 +64,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signUp = async (email: string, password: string) => {
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await createUserWithEmailAndPassword(auth, email, password);
       
       // Send verification email immediately after signup
       await sendVerificationEmail();
       
       // Sign out user until they verify their email
       await firebaseSignOut(auth);
-      
-      return result;
     } catch (error: any) {
       console.error('Sign up error:', error);
       throw error;

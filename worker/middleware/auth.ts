@@ -1,4 +1,4 @@
-import { Context, MiddlewareHandler } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import {
   VerifyFirebaseAuthConfig,
   verifyFirebaseAuth,
