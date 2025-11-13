@@ -13,7 +13,9 @@ const versions = new Hono<{ Bindings: Env }>();
 versions.get('/', async (c) => {
   // Get authenticated user info from Firebase token
   const token = getFirebaseToken(c);
-  console.log('Authenticated user:', token.uid, token.email);
+  if (token) {
+    console.log('Authenticated user:', token.uid, token.email);
+  }
   
   const result = await c.env.DB.prepare(
     'SELECT * FROM app_versions ORDER BY released_at DESC'

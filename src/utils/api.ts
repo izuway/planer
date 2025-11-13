@@ -17,10 +17,17 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { requireAuth = true, ...fetchOptions } = options;
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...fetchOptions.headers,
   };
+
+  // Merge existing headers
+  if (fetchOptions.headers) {
+    const existingHeaders = new Headers(fetchOptions.headers);
+    existingHeaders.forEach((value, key) => {
+      headers[key] = value;
+    });
+  }
 
   // Add Firebase token if auth is required
   if (requireAuth) {

@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { AuthPage } from './Auth';
