@@ -1,64 +1,93 @@
-/**
- * API client utilities for making authenticated requests
- */
+import { getCurrentUserToken } from '../firebase';
 
-const API_BASE_URL = import.meta.env.PROD ? '/api' : 'http://localhost:8787/api';
-
-interface RequestOptions extends RequestInit {
-  requireAuth?: boolean;
-}
+const API_BASE_URL = import.meta.env.PROD 
+  ? 'https://planer.m-k-mendykhan.workers.dev/api'
+  : '/api';
 
 /**
- * Make an authenticated API request
+ * Make authenticated API request
  */
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestOptions = {}
-): Promise<T> {
-  const { requireAuth = true, ...fetchOptions } = options;
-  
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  // Merge existing headers
-  if (fetchOptions.headers) {
-    const existingHeaders = new Headers(fetchOptions.headers);
-    existingHeaders.forEach((value, key) => {
-      headers[key] = value;
-    });
-  }
-
-  // Add Firebase token if auth is required
-  if (requireAuth) {
-    const token = localStorage.getItem('firebase_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
-
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  const response = await fetch(url, {
-    ...fetchOptions,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Network error' }));
-    throw new Error(error.error || `HTTP error! status: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Public API request (no authentication required)
- */
-export async function publicApiRequest<T>(
+export const apiRequest = async (
   endpoint: string,
   options: RequestInit = {}
-): Promise<T> {
-  return apiRequest<T>(`/public${endpoint}`, { ...options, requireAuth: false });
-}
+): Promise<Response> => {
+  const token = await getCurrentUserToken();
+  
+  const headers = new Headers(options.headers);
+  
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  
+  headers.set('Content-Type', 'application/json');
+  
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+  
+  return response;
+};
+
+/**
+ * GET request
+ */
+export const get = async (endpoint: string): Promise<any> => {
+  const response = await apiRequest(endpoint, {
+    method: 'GET',
+  });
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+
+/**
+ * POST request
+ */
+export const post = async (endpoint: string, data?: any): Promise<any> => {
+  const response = await apiRequest(endpoint, {
+    method: 'POST',
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+
+/**
+ * PUT request
+ */
+export const put = async (endpoint: string, data?: any): Promise<any> => {
+  const response = await apiRequest(endpoint, {
+    method: 'PUT',
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+
+/**
+ * DELETE request
+ */
+export const del = async (endpoint: string): Promise<any> => {
+  const response = await apiRequest(endpoint, {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+  }
+  
+  return response.json();
+};
 

@@ -40,11 +40,21 @@ export interface AppVersion {
   updated_at: string;
 }
 
+// Firebase Auth types
+export interface FirebaseUser {
+  uid: string;
+  email: string | null;
+  email_verified: boolean;
+  name?: string;
+  picture?: string;
+}
+
 // Environment bindings
 export interface Env {
   DB: D1Database;
   My_NAME: string;
-  PUBLIC_JWK_CACHE_KEY?: string;
-  PUBLIC_JWK_CACHE_KV?: any;
+  PUBLIC_JWK_CACHE_KV: KVNamespace;
+  PUBLIC_JWK_CACHE_KEY: string;
+  FIREBASE_PROJECT_ID: string;
 }
 

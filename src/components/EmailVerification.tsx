@@ -1,130 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box,
-  Container,
-  Paper,
-  Typography,
+  Card,
+  CardContent,
   Button,
+  Typography,
   Alert,
   CircularProgress,
-  Link,
 } from '@mui/material';
-import { Email as EmailIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
-import { applyActionCode } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { MailOutline as MailIcon } from '@mui/icons-material';
+import { auth, resendVerificationEmail, logOut } from '../firebase';
 
-/**
- * Email verification page
- * Shown to users who haven't verified their email yet
- * Also handles email verification from link (oobCode)
- */
 export const EmailVerification = () => {
-  const { user, sendVerificationEmail, reloadUser, logout } = useAuth();
-  const [sending, setSending] = useState(false);
-  const [checking, setChecking] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [cooldown, setCooldown] = useState(0);
 
-  // Check for email verification code in URL (oobCode)
-  useEffect(() => {
-    const handleEmailVerificationFromLink = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const mode = urlParams.get('mode');
-      const oobCode = urlParams.get('oobCode');
+  const handleResendEmail = async () => {
+    if (!auth.currentUser) return;
 
-      if (mode === 'verifyEmail' && oobCode) {
-        try {
-          setChecking(true);
-          
-          // Apply the verification code
-          await applyActionCode(auth, oobCode);
-          
-          // Reload user to update emailVerified status
-          await reloadUser();
-          
-          // Clear URL parameters
-          window.history.replaceState({}, document.title, window.location.pathname);
-          
-          setMessage('Email успешно подтвержден! Перенаправление...');
-          
-          // The ProtectedRoute will automatically redirect to app
-        } catch (err: any) {
-          console.error('Error verifying email from link:', err);
-          
-          if (err.code === 'auth/invalid-action-code') {
-            setError('Ссылка подтверждения недействительна или уже использована.');
-          } else if (err.code === 'auth/expired-action-code') {
-            setError('Ссылка подтверждения истекла. Запросите новое письмо.');
-          } else {
-            setError('Ошибка подтверждения email. Попробуйте еще раз.');
-          }
-        } finally {
-          setChecking(false);
-        }
-      }
-    };
+    setLoading(true);
+    setMessage('');
+    setError('');
 
-    handleEmailVerificationFromLink();
-  }, [reloadUser]);
-
-  // Cooldown timer
-  useEffect(() => {
-    if (cooldown > 0) {
-      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [cooldown]);
-
-  const handleSendEmail = async () => {
     try {
-      setSending(true);
-      setError('');
-      setMessage('');
-      
-      await sendVerificationEmail();
-      
-      setMessage('Письмо с подтверждением отправлено! Проверьте вашу почту.');
-      setCooldown(60); // 60 seconds cooldown
+      await resendVerificationEmail(auth.currentUser);
+      setMessage('Verification email sent! Please check your inbox.');
     } catch (err: any) {
-      console.error('Error sending verification email:', err);
-      
+      console.error('Resend email error:', err);
       if (err.code === 'auth/too-many-requests') {
-        setError('Слишком много попыток. Подождите немного.');
+        setError('Too many requests. Please try again later.');
       } else {
-        setError('Ошибка отправки письма. Попробуйте еще раз.');
+        setError('Failed to send verification email. Please try again.');
       }
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   };
 
-  const handleCheckVerification = async () => {
+  const handleRefresh = async () => {
+    if (!auth.currentUser) return;
+
+    setLoading(true);
     try {
-      setChecking(true);
-      setError('');
+      // Reload user to get updated email verification status
+      await auth.currentUser.reload();
       
-      await reloadUser();
+      // Force a token refresh
+      await auth.currentUser.getIdToken(true);
       
-      // Check if email is now verified
-      if (user?.emailVerified) {
-        setMessage('Email подтвержден! Перенаправление...');
-        // The ProtectedRoute will handle the redirect automatically
+      if (auth.currentUser.emailVerified) {
+        window.location.reload();
       } else {
-        setError('Email еще не подтвержден. Проверьте почту и нажмите на ссылку в письме.');
+        setError('Email not verified yet. Please check your inbox and click the verification link.');
       }
-    } catch (err: any) {
-      console.error('Error checking verification:', err);
-      setError('Ошибка проверки. Попробуйте еще раз.');
+    } catch (err) {
+      console.error('Refresh error:', err);
+      setError('Failed to check verification status. Please try again.');
     } finally {
-      setChecking(false);
+      setLoading(false);
     }
   };
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await logOut();
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -133,28 +73,28 @@ export const EmailVerification = () => {
   return (
     <Box
       sx={{
-        minHeight: '100vh',
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
         bgcolor: 'background.default',
-        py: 3,
+        px: 2,
       }}
     >
-      <Container maxWidth="sm">
-        <Paper elevation={3} sx={{ p: 4, borderRadius: 2 }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <EmailIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h4" component="h1" gutterBottom fontWeight={600}>
-              Подтвердите email
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Мы отправили письмо с подтверждением на адрес:
-            </Typography>
-            <Typography variant="body1" fontWeight={600} sx={{ mt: 1 }}>
-              {user?.email}
-            </Typography>
+      <Card sx={{ maxWidth: 500, width: '100%' }}>
+        <CardContent sx={{ p: 4, textAlign: 'center' }}>
+          <Box sx={{ mb: 3 }}>
+            <MailIcon sx={{ fontSize: 64, color: 'primary.main' }} />
           </Box>
+
+          <Typography variant="h4" component="h1" gutterBottom>
+            Verify Your Email
+          </Typography>
+
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            We've sent a verification email to <strong>{auth.currentUser?.email}</strong>.
+            Please check your inbox and click the verification link.
+          </Typography>
 
           {message && (
             <Alert severity="success" sx={{ mb: 2 }}>
@@ -168,57 +108,40 @@ export const EmailVerification = () => {
             </Alert>
           )}
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
-              Проверьте папку "Спам" если не видите письмо в основной папке.
-              Письмо может прийти в течение нескольких минут.
-            </Typography>
-          </Alert>
-
-          <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Button
               fullWidth
               variant="contained"
-              size="large"
-              onClick={handleCheckVerification}
-              disabled={checking}
-              startIcon={checking ? <CircularProgress size={20} /> : <CheckCircleIcon />}
-              sx={{ mb: 2 }}
+              onClick={handleRefresh}
+              disabled={loading}
             >
-              {checking ? 'Проверка...' : 'Я подтвердил email'}
+              {loading ? <CircularProgress size={24} /> : 'I\'ve Verified My Email'}
             </Button>
 
             <Button
               fullWidth
               variant="outlined"
-              size="large"
-              onClick={handleSendEmail}
-              disabled={sending || cooldown > 0}
-              startIcon={sending ? <CircularProgress size={20} /> : <EmailIcon />}
+              onClick={handleResendEmail}
+              disabled={loading}
             >
-              {sending
-                ? 'Отправка...'
-                : cooldown > 0
-                ? `Отправить повторно (${cooldown}с)`
-                : 'Отправить письмо повторно'}
+              Resend Verification Email
+            </Button>
+
+            <Button
+              fullWidth
+              variant="text"
+              onClick={handleLogout}
+              disabled={loading}
+            >
+              Logout
             </Button>
           </Box>
 
-          <Box sx={{ textAlign: 'center', mt: 3 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Неправильный email?{' '}
-              <Link
-                component="button"
-                type="button"
-                onClick={handleLogout}
-                sx={{ cursor: 'pointer' }}
-              >
-                Выйти и зарегистрироваться заново
-              </Link>
-            </Typography>
-          </Box>
-        </Paper>
-      </Container>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 3, display: 'block' }}>
+            After verifying your email, click "I've Verified My Email" to continue.
+          </Typography>
+        </CardContent>
+      </Card>
     </Box>
   );
 };

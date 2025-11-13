@@ -1,33 +1,117 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import { getFirebaseToken } from '@hono/firebase-auth';
+import type { Env, FirebaseUser } from '../types';
 
-// Auth routes - these are public (no Firebase middleware)
 const auth = new Hono<{ Bindings: Env }>();
 
 /**
- * Health check endpoint for auth service
+ * Verify token endpoint
+ * Checks if the provided token is valid and returns user info
  */
-auth.get('/health', (c) => {
-  return c.json({ status: 'ok', service: 'auth' });
+auth.post('/verify', async (c) => {
+  try {
+    const idToken = getFirebaseToken(c);
+    
+    if (!idToken) {
+      return c.json({ 
+        error: 'Invalid token',
+        message: 'No valid token found'
+      }, 401);
+    }
+
+    const user: FirebaseUser = {
+      uid: idToken.uid,
+      email: idToken.email || null,
+      email_verified: idToken.email_verified,
+      name: idToken.name,
+      picture: idToken.picture,
+    };
+
+    return c.json({ 
+      success: true,
+      user,
+      emailVerified: idToken.email_verified
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    return c.json({ 
+      error: 'Verification failed',
+      message: 'Failed to verify token'
+    }, 401);
+  }
 });
 
 /**
- * Note: Registration and login are handled on the client side with Firebase SDK.
- * The client will receive an ID token from Firebase after successful auth,
- * which should be sent in the Authorization header for protected routes.
- * 
- * This endpoint can be used to verify token validity.
+ * Get current user endpoint
+ * Returns the current authenticated user's information
  */
-auth.post('/verify', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'No token provided' }, 401);
-  }
+auth.get('/me', async (c) => {
+  try {
+    const idToken = getFirebaseToken(c);
+    
+    if (!idToken) {
+      return c.json({ 
+        error: 'Not authenticated',
+        message: 'User not authenticated'
+      }, 401);
+    }
 
-  // Token validation happens in the Firebase middleware
-  // This endpoint just confirms the token was validated successfully
-  return c.json({ valid: true, message: 'Token is valid' });
+    if (!idToken.email_verified) {
+      return c.json({ 
+        error: 'Email not verified',
+        message: 'Please verify your email',
+        user: {
+          uid: idToken.uid,
+          email: idToken.email || null,
+          email_verified: false,
+        }
+      }, 403);
+    }
+
+    const user: FirebaseUser = {
+      uid: idToken.uid,
+      email: idToken.email || null,
+      email_verified: idToken.email_verified,
+      name: idToken.name,
+      picture: idToken.picture,
+    };
+
+    return c.json({ 
+      success: true,
+      user
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    return c.json({ 
+      error: 'Failed to get user',
+      message: 'Failed to retrieve user information'
+    }, 500);
+  }
+});
+
+/**
+ * Check email verification status
+ */
+auth.get('/email-status', async (c) => {
+  try {
+    const idToken = getFirebaseToken(c);
+    
+    if (!idToken) {
+      return c.json({ 
+        error: 'Not authenticated'
+      }, 401);
+    }
+
+    return c.json({ 
+      success: true,
+      emailVerified: idToken.email_verified,
+      email: idToken.email
+    });
+  } catch (error) {
+    return c.json({ 
+      error: 'Failed to check email status'
+    }, 500);
+  }
 });
 
 export default auth;

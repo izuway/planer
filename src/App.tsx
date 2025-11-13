@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -27,8 +27,10 @@ import {
   CssBaseline,
   useMediaQuery,
   Switch,
-} from '@mui/material'
-import Grid from '@mui/material/Grid'
+  CircularProgress,
+  Alert,
+} from '@mui/material';
+import Grid from '@mui/material/Grid';
 import {
   Menu as MenuIcon,
   Home as HomeIcon,
@@ -43,80 +45,74 @@ import {
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,
   Logout as LogoutIcon,
-} from '@mui/icons-material'
-import { useAuth } from './context/AuthContext'
-import './App.css'
+} from '@mui/icons-material';
+import { useAuth } from './contexts/AuthContext';
+import { Login } from './components/Login';
+import { Signup } from './components/Signup';
+import { EmailVerification } from './components/EmailVerification';
+import { logOut } from './firebase';
+import './App.css';
 
 function App() {
-  const { user, logout } = useAuth();
+  const { user, loading, emailVerified } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   
   // Определяем системную тему
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
+  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
   
   // Состояние темы: 'light', 'dark', или 'auto'
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>(() => {
-    const savedMode = localStorage.getItem('themeMode')
-    return (savedMode as 'light' | 'dark' | 'auto') || 'auto'
-  })
+    const savedMode = localStorage.getItem('themeMode');
+    return (savedMode as 'light' | 'dark' | 'auto') || 'auto';
+  });
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [navigationValue, setNavigationValue] = useState(0)
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  }
-
-  // Сохраняем выбор темы в localStorage
-  useEffect(() => {
-    localStorage.setItem('themeMode', themeMode)
-  }, [themeMode])
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [navigationValue, setNavigationValue] = useState(0);
 
   // Определяем фактическую тему (с учетом auto режима)
   const actualMode = themeMode === 'auto' 
     ? (prefersDarkMode ? 'dark' : 'light')
-    : themeMode
+    : themeMode;
 
   // Создаем тему
-  const theme = useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode: actualMode,
-          primary: {
-            main: '#1976d2',
-          },
-          secondary: {
-            main: '#dc004e',
-          },
-        },
-      }),
-    [actualMode]
-  )
+  const theme = createTheme({
+    palette: {
+      mode: actualMode,
+      primary: {
+        main: '#1976d2',
+      },
+      secondary: {
+        main: '#dc004e',
+      },
+    },
+  });
 
   const toggleDrawer = (open: boolean) => () => {
-    setDrawerOpen(open)
-  }
+    setDrawerOpen(open);
+  };
 
-  const handleModalOpen = () => setModalOpen(true)
-  const handleModalClose = () => setModalOpen(false)
+  const handleModalOpen = () => setModalOpen(true);
+  const handleModalClose = () => setModalOpen(false);
 
   const handleThemeToggle = () => {
-    setThemeMode((prev) => {
-      if (prev === 'auto') return 'light'
-      if (prev === 'light') return 'dark'
-      return 'auto'
-    })
-  }
+    const newMode = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto';
+    setThemeMode(newMode);
+    localStorage.setItem('themeMode', newMode);
+  };
 
   const getThemeLabel = () => {
-    if (themeMode === 'auto') return `Авто (${actualMode === 'dark' ? 'Темная' : 'Светлая'})`
-    return themeMode === 'dark' ? 'Темная' : 'Светлая'
-  }
+    if (themeMode === 'auto') return `Авто (${actualMode === 'dark' ? 'Темная' : 'Светлая'})`;
+    return themeMode === 'dark' ? 'Темная' : 'Светлая';
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   // Стиль для модального окна (mobile-first)
   const modalStyle = {
@@ -130,309 +126,360 @@ function App() {
     boxShadow: 24,
     borderRadius: 2,
     p: 4,
+  };
+
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '100vh',
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
+    );
   }
 
+  // Show login/signup if user is not authenticated
+  if (!user) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        {authMode === 'login' ? (
+          <Login onSwitchToSignup={() => setAuthMode('signup')} />
+        ) : (
+          <Signup
+            onSwitchToLogin={() => setAuthMode('login')}
+            onSignupSuccess={() => {
+              // Email verification screen will be shown automatically
+            }}
+          />
+        )}
+      </ThemeProvider>
+    );
+  }
+
+  // Show email verification screen if email is not verified
+  if (!emailVerified) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <EmailVerification />
+      </ThemeProvider>
+    );
+  }
+
+  // Main application (only accessible with verified email)
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         {/* AppBar с Navigation */}
         <AppBar position="sticky">
-        <Toolbar>
-          <IconButton
-            size="large"
-            edge="start"
-            color="inherit"
-            aria-label="menu"
-            sx={{ mr: 2 }}
-            onClick={toggleDrawer(true)}
+          <Toolbar>
+            <IconButton
+              size="large"
+              edge="start"
+              color="inherit"
+              aria-label="menu"
+              sx={{ mr: 2 }}
+              onClick={toggleDrawer(true)}
+            >
+              <MenuIcon />
+            </IconButton>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Planer
+            </Typography>
+            
+            {/* Avatar с Badge */}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <IconButton color="inherit">
+                <Badge badgeContent={4} color="error">
+                  <MailIcon />
+                </Badge>
+              </IconButton>
+              <IconButton color="inherit">
+                <Badge badgeContent={17} color="error">
+                  <NotificationsIcon />
+                </Badge>
+              </IconButton>
+              <Badge
+                overlap="circular"
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                badgeContent={
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      bgcolor: 'success.main',
+                      border: '2px solid white',
+                    }}
+                  />
+                }
+              >
+                <Avatar alt="User Avatar" sx={{ bgcolor: 'secondary.main' }}>
+                  {user.email?.[0].toUpperCase()}
+                </Avatar>
+              </Badge>
+            </Box>
+          </Toolbar>
+        </AppBar>
+
+        {/* Drawer */}
+        <Drawer anchor="left" open={drawerOpen} onClose={toggleDrawer(false)}>
+          <Box
+            sx={{ width: 280 }}
+            role="presentation"
+            onClick={toggleDrawer(false)}
+            onKeyDown={toggleDrawer(false)}
           >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            MUI Demo
-          </Typography>
-          
-          {/* Avatar с Badge */}
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <IconButton color="inherit">
-              <Badge badgeContent={4} color="error">
-                <MailIcon />
-              </Badge>
-            </IconButton>
-            <IconButton color="inherit">
-              <Badge badgeContent={17} color="error">
-                <NotificationsIcon />
-              </Badge>
-            </IconButton>
-            <Badge
-              overlap="circular"
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              badgeContent={
-                <Box
-                  sx={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: '50%',
-                    bgcolor: 'success.main',
-                    border: '2px solid white',
+            <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
+                <PersonIcon />
+              </Avatar>
+              <Box>
+                <Typography variant="h6">{user.displayName || 'User'}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {user.email}
+                </Typography>
+              </Box>
+            </Box>
+            <Divider />
+            <List>
+              {['Главная', 'Планировщик', 'Календарь', 'Настройки'].map((text, index) => {
+                const icons = [<HomeIcon />, <DashboardIcon />, <CalendarIcon />, <SettingsIcon />];
+                return (
+                  <ListItem key={text} disablePadding>
+                    <ListItemButton>
+                      <ListItemIcon>{icons[index]}</ListItemIcon>
+                      <ListItemText primary={text} />
+                    </ListItemButton>
+                  </ListItem>
+                );
+              })}
+            </List>
+            <Divider />
+            <List>
+              <ListItem>
+                <ListItemIcon>
+                  {actualMode === 'dark' ? <DarkModeIcon /> : <LightModeIcon />}
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Тема" 
+                  secondary={getThemeLabel()}
+                />
+                <Switch
+                  edge="end"
+                  onChange={handleThemeToggle}
+                  checked={themeMode !== 'auto'}
+                  inputProps={{
+                    'aria-label': 'переключатель темы',
                   }}
                 />
-              }
-            >
-              <Avatar alt="User Avatar" sx={{ bgcolor: 'secondary.main' }}>
-                {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
-              </Avatar>
-            </Badge>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton onClick={handleLogout}>
+                  <ListItemIcon>
+                    <LogoutIcon />
+                  </ListItemIcon>
+                  <ListItemText primary="Выйти" />
+                </ListItemButton>
+              </ListItem>
+            </List>
           </Box>
-        </Toolbar>
-      </AppBar>
+        </Drawer>
 
-      {/* Drawer */}
-      <Drawer anchor="left" open={drawerOpen} onClose={toggleDrawer(false)}>
-        <Box
-          sx={{ width: 280 }}
-          role="presentation"
-          onClick={toggleDrawer(false)}
-          onKeyDown={toggleDrawer(false)}
-        >
-          <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
-              {user?.displayName ? user.displayName[0].toUpperCase() : user?.email?.[0].toUpperCase() || 'U'}
-            </Avatar>
-            <Box>
-              <Typography variant="h6">
-                {user?.displayName || 'Пользователь'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {user?.email}
-              </Typography>
-            </Box>
-          </Box>
-          <Divider />
-          <List>
-            {['Главная', 'Планировщик', 'Календарь', 'Настройки'].map((text, index) => {
-              const icons = [<HomeIcon />, <DashboardIcon />, <CalendarIcon />, <SettingsIcon />]
-              return (
-                <ListItem key={text} disablePadding>
-                  <ListItemButton>
-                    <ListItemIcon>{icons[index]}</ListItemIcon>
-                    <ListItemText primary={text} />
-                  </ListItemButton>
-                </ListItem>
-              )
-            })}
-          </List>
-          <Divider />
-          <List>
-            <ListItem>
-              <ListItemIcon>
-                {actualMode === 'dark' ? <DarkModeIcon /> : <LightModeIcon />}
-              </ListItemIcon>
-              <ListItemText 
-                primary="Тема" 
-                secondary={getThemeLabel()}
-              />
-              <Switch
-                edge="end"
-                onChange={handleThemeToggle}
-                checked={themeMode !== 'auto'}
-                inputProps={{
-                  'aria-label': 'переключатель темы',
-                }}
-              />
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton onClick={handleLogout}>
-                <ListItemIcon>
-                  <LogoutIcon />
-                </ListItemIcon>
-                <ListItemText primary="Выйти" />
-              </ListItemButton>
-            </ListItem>
-          </List>
-        </Box>
-      </Drawer>
-
-      {/* Main Content */}
-      <Container
-        component="main"
-        sx={{
-          flexGrow: 1,
-          py: 3,
-          px: { xs: 2, sm: 3 },
-          pb: 10, // Отступ для Bottom Navigation
-        }}
-      >
-        <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
-          Демонстрация MUI компонентов
-        </Typography>
-
-        <Grid container spacing={3}>
-          {/* Card Examples */}
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3}>
-              <CardContent>
-                <Typography variant="h5" component="div" gutterBottom>
-                  Card 1
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Это пример карточки с возвышением. Отлично работает на мобильных устройствах.
-                </Typography>
-              </CardContent>
-              <CardActions>
-                <Button size="small" variant="contained">
-                  Действие
-                </Button>
-                <Button size="small">Подробнее</Button>
-              </CardActions>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'primary.main' }}>
-                    <FavoriteIcon />
-                  </Avatar>
-                  <Typography variant="h5" component="div">
-                    Card 2
-                  </Typography>
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  Карточка с иконкой и аватаром. Mobile-first дизайн адаптируется под любой экран.
-                </Typography>
-              </CardContent>
-              <CardActions>
-                <Button size="small" color="secondary">
-                  Избранное
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3}>
-              <CardContent>
-                <Typography variant="h5" component="div" gutterBottom>
-                  Modal Demo
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Нажмите кнопку ниже, чтобы открыть модальное окно.
-                </Typography>
-                <Button variant="outlined" fullWidth onClick={handleModalOpen}>
-                  Открыть Modal
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Additional Cards */}
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3} sx={{ bgcolor: 'primary.main', color: 'white' }}>
-              <CardContent>
-                <Typography variant="h5" component="div" gutterBottom>
-                  Цветная Card
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
-                  Карточка с кастомным фоном для акцента на важной информации.
-                </Typography>
-              </CardContent>
-              <CardActions>
-                <Button size="small" sx={{ color: 'white' }}>
-                  Узнать больше
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3}>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="h5" component="div">
-                    Drawer Demo
-                  </Typography>
-                  <IconButton size="small" onClick={toggleDrawer(true)}>
-                    <MenuIcon />
-                  </IconButton>
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  Нажмите на иконку меню или используйте кнопку в AppBar для открытия Drawer.
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-            <Card elevation={3}>
-              <CardContent>
-                <Typography variant="h5" component="div" gutterBottom>
-                  Avatar & Badge
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2 }}>
-                  <Badge badgeContent={4} color="primary">
-                    <Avatar sx={{ bgcolor: 'primary.main' }}>A</Avatar>
-                  </Badge>
-                  <Badge badgeContent={10} color="secondary">
-                    <Avatar sx={{ bgcolor: 'secondary.main' }}>B</Avatar>
-                  </Badge>
-                  <Badge badgeContent={99} color="error">
-                    <Avatar sx={{ bgcolor: 'error.main' }}>C</Avatar>
-                  </Badge>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Container>
-
-      {/* Modal */}
-      <Modal
-        open={modalOpen}
-        onClose={handleModalClose}
-        aria-labelledby="modal-title"
-        aria-describedby="modal-description"
-      >
-        <Box sx={modalStyle}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography id="modal-title" variant="h5" component="h2">
-              Модальное окно
-            </Typography>
-            <IconButton onClick={handleModalClose} size="small">
-              <CloseIcon />
-            </IconButton>
-          </Box>
-          <Typography id="modal-description" sx={{ mb: 3 }}>
-            Это модальное окно адаптировано для мобильных устройств. Оно занимает 90% ширины экрана с максимумом 400px.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-            <Button onClick={handleModalClose}>Отмена</Button>
-            <Button variant="contained" onClick={handleModalClose}>
-              ОК
-            </Button>
-          </Box>
-        </Box>
-      </Modal>
-
-      {/* Bottom Navigation для mobile */}
-      <Box sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }}>
-        <BottomNavigation
-          showLabels
-          value={navigationValue}
-          onChange={(_event, newValue) => {
-            setNavigationValue(newValue)
+        {/* Main Content */}
+        <Container
+          component="main"
+          sx={{
+            flexGrow: 1,
+            py: 3,
+            px: { xs: 2, sm: 3 },
+            pb: 10, // Отступ для Bottom Navigation
           }}
         >
-          <BottomNavigationAction label="Главная" icon={<HomeIcon />} />
-          <BottomNavigationAction label="Избранное" icon={<FavoriteIcon />} />
-          <BottomNavigationAction label="Профиль" icon={<PersonIcon />} />
-        </BottomNavigation>
-      </Box>
+          <Alert severity="success" sx={{ mb: 3 }}>
+            Welcome! Your email is verified and you have full access to the application.
+          </Alert>
+
+          <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+            Planer Dashboard
+          </Typography>
+
+          <Grid container spacing={3}>
+            {/* Card Examples */}
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3}>
+                <CardContent>
+                  <Typography variant="h5" component="div" gutterBottom>
+                    Card 1
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Это пример карточки с возвышением. Отлично работает на мобильных устройствах.
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" variant="contained">
+                    Действие
+                  </Button>
+                  <Button size="small">Подробнее</Button>
+                </CardActions>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'primary.main' }}>
+                      <FavoriteIcon />
+                    </Avatar>
+                    <Typography variant="h5" component="div">
+                      Card 2
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Карточка с иконкой и аватаром. Mobile-first дизайн адаптируется под любой экран.
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" color="secondary">
+                    Избранное
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3}>
+                <CardContent>
+                  <Typography variant="h5" component="div" gutterBottom>
+                    Modal Demo
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Нажмите кнопку ниже, чтобы открыть модальное окно.
+                  </Typography>
+                  <Button variant="outlined" fullWidth onClick={handleModalOpen}>
+                    Открыть Modal
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Additional Cards */}
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3} sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                <CardContent>
+                  <Typography variant="h5" component="div" gutterBottom>
+                    Цветная Card
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)' }}>
+                    Карточка с кастомным фоном для акцента на важной информации.
+                  </Typography>
+                </CardContent>
+                <CardActions>
+                  <Button size="small" sx={{ color: 'white' }}>
+                    Узнать больше
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                    <Typography variant="h5" component="div">
+                      Drawer Demo
+                    </Typography>
+                    <IconButton size="small" onClick={toggleDrawer(true)}>
+                      <MenuIcon />
+                    </IconButton>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Нажмите на иконку меню или используйте кнопку в AppBar для открытия Drawer.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card elevation={3}>
+                <CardContent>
+                  <Typography variant="h5" component="div" gutterBottom>
+                    Avatar & Badge
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mt: 2 }}>
+                    <Badge badgeContent={4} color="primary">
+                      <Avatar sx={{ bgcolor: 'primary.main' }}>A</Avatar>
+                    </Badge>
+                    <Badge badgeContent={10} color="secondary">
+                      <Avatar sx={{ bgcolor: 'secondary.main' }}>B</Avatar>
+                    </Badge>
+                    <Badge badgeContent={99} color="error">
+                      <Avatar sx={{ bgcolor: 'error.main' }}>C</Avatar>
+                    </Badge>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Container>
+
+        {/* Modal */}
+        <Modal
+          open={modalOpen}
+          onClose={handleModalClose}
+          aria-labelledby="modal-title"
+          aria-describedby="modal-description"
+        >
+          <Box sx={modalStyle}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography id="modal-title" variant="h5" component="h2">
+                Модальное окно
+              </Typography>
+              <IconButton onClick={handleModalClose} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Box>
+            <Typography id="modal-description" sx={{ mb: 3 }}>
+              Это модальное окно адаптировано для мобильных устройств. Оно занимает 90% ширины экрана с максимумом 400px.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Button onClick={handleModalClose}>Отмена</Button>
+              <Button variant="contained" onClick={handleModalClose}>
+                ОК
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+
+        {/* Bottom Navigation для mobile */}
+        <Box sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }}>
+          <BottomNavigation
+            showLabels
+            value={navigationValue}
+            onChange={(_event, newValue) => {
+              setNavigationValue(newValue);
+            }}
+          >
+            <BottomNavigationAction label="Главная" icon={<HomeIcon />} />
+            <BottomNavigationAction label="Избранное" icon={<FavoriteIcon />} />
+            <BottomNavigationAction label="Профиль" icon={<PersonIcon />} />
+          </BottomNavigation>
+        </Box>
       </Box>
     </ThemeProvider>
-  )
+  );
 }
 
-export default App
+export default App;

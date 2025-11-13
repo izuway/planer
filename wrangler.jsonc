@@ -16,13 +16,21 @@
 	,
  "vars":
  	{
- 		"My_NAME": "Malik"
+ 		"My_NAME": "Malik",
+		"FIREBASE_PROJECT_ID": "planer-97a3b",
+		"PUBLIC_JWK_CACHE_KEY": "firebase-public-jwk"
  	},
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "planer-db",
 			"database_id": "e19445cf-9a86-4044-bed0-48eab886707c"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "PUBLIC_JWK_CACHE_KV",
+			"id": "YOUR_KV_NAMESPACE_ID"
 		}
 	]
 
