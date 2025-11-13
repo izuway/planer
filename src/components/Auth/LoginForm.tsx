@@ -39,6 +39,7 @@ export const LoginForm = ({ onSwitchToSignup }: LoginFormProps) => {
     try {
       await login(email, password);
       // Success - user will be redirected by auth state change
+      // If email is not verified, ProtectedRoute will show verification page
     } catch (err: any) {
       console.error('Login error:', err);
       
@@ -46,6 +47,7 @@ export const LoginForm = ({ onSwitchToSignup }: LoginFormProps) => {
       switch (err.code) {
         case 'auth/user-not-found':
         case 'auth/wrong-password':
+        case 'auth/invalid-credential':
           setError('Неверный email или пароль');
           break;
         case 'auth/invalid-email':

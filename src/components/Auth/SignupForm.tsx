@@ -51,7 +51,8 @@ export const SignupForm = ({ onSwitchToLogin }: SignupFormProps) => {
     
     try {
       await signup(email, password, displayName);
-      // Success - user will be redirected by auth state change
+      // Success - user will be shown email verification page
+      // (ProtectedRoute will handle this automatically)
     } catch (err: any) {
       console.error('Signup error:', err);
       

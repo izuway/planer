@@ -6,6 +6,7 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  sendEmailVerification,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { auth } from '../config/firebase';
@@ -17,6 +18,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
+  sendVerificationEmail: () => Promise<void>;
+  reloadUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -64,7 +67,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       await updateProfile(result.user, { displayName });
     }
     
-    // Get and store token
+    // Send email verification
+    await sendEmailVerification(result.user);
+    
+    // Get and store token (but user won't be able to access app until verified)
     const token = await result.user.getIdToken();
     localStorage.setItem('firebase_token', token);
   };
@@ -96,6 +102,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
+  const sendVerificationEmail = async () => {
+    if (!user) {
+      throw new Error('No user logged in');
+    }
+    
+    await sendEmailVerification(user);
+  };
+
+  const reloadUser = async () => {
+    if (user) {
+      await user.reload();
+      setUser(auth.currentUser);
+    }
+  };
+
   const value: AuthContextType = {
     user,
     loading,
@@ -103,6 +124,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     login,
     logout,
     getIdToken,
+    sendVerificationEmail,
+    reloadUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
