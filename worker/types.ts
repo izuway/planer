@@ -1,3 +1,6 @@
+// Import FirebaseIdToken from @hono/firebase-auth
+import type { FirebaseIdToken } from '@hono/firebase-auth';
+
 // D1 Database types
 export interface D1Database {
   prepare(query: string): D1PreparedStatement;
@@ -48,17 +51,9 @@ export interface Env {
   PUBLIC_JWK_CACHE_KV: KVNamespace;
 }
 
-// Firebase Auth types
-export interface FirebaseUser {
-  uid: string;
-  email: string | null;
-  email_verified: boolean;
-  [key: string]: any;
-}
-
 // Hono context variables
 export interface Variables {
-  user?: FirebaseUser;
+  user?: FirebaseIdToken;
   requestId?: string;
 }
 

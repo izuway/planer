@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import {
-  VerifyFirebaseAuthConfig,
+  type VerifyFirebaseAuthConfig,
   verifyFirebaseAuth,
   getFirebaseToken,
 } from '@hono/firebase-auth';
@@ -20,28 +20,40 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: Varia
   const firebaseAuthHandler = verifyFirebaseAuth(firebaseConfig);
   
   try {
+    // Verify the Firebase token first
     await firebaseAuthHandler(c, async () => {
-      // Get the decoded Firebase token
+      // Get the decoded Firebase token after verification
       const token = getFirebaseToken(c);
+      
+      if (!token) {
+        throw new Error('No token found');
+      }
       
       // Check if email is verified
       if (!token.email_verified) {
-        return c.json(
-          {
-            error: 'Email not verified',
-            message: 'Please verify your email address before accessing the application',
-          },
-          403
-        );
+        throw new Error('Email not verified');
       }
       
       // Set user info in context for downstream handlers
       c.set('user', token);
-      
-      await next();
     });
-  } catch (error) {
+    
+    // Continue to next handler
+    await next();
+  } catch (error: any) {
     console.error('Authentication error:', error);
+    
+    // Handle specific error messages
+    if (error.message === 'Email not verified') {
+      return c.json(
+        {
+          error: 'Email not verified',
+          message: 'Please verify your email address before accessing the application',
+        },
+        403
+      );
+    }
+    
     return c.json(
       {
         error: 'Unauthorized',
@@ -64,7 +76,9 @@ export const optionalAuthMiddleware: MiddlewareHandler<{ Bindings: Env; Variable
       const firebaseAuthHandler = verifyFirebaseAuth(firebaseConfig);
       await firebaseAuthHandler(c, async () => {
         const token = getFirebaseToken(c);
-        c.set('user', token);
+        if (token) {
+          c.set('user', token);
+        }
       });
     } catch (error) {
       // Ignore auth errors for optional auth
