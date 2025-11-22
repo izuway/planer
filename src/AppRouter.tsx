@@ -36,7 +36,6 @@ import {
   Settings as SettingsIcon,
   Mail as MailIcon,
   Notifications as NotificationsIcon,
-  Dashboard as DashboardIcon,
   CalendarMonth as CalendarIcon,
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,

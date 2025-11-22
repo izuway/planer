@@ -9,7 +9,6 @@ import {
   Stack,
   TextField,
   MenuItem,
-  Chip,
   InputAdornment,
 } from '@mui/material';
 import {
@@ -107,7 +106,7 @@ export const TaskListPage: React.FC = () => {
     }
   };
 
-  const handleShare = (taskId: string) => {
+  const handleShare = (_taskId: string) => {
     // TODO: Implement share dialog
     alert('Функция шаринга будет реализована позже');
   };

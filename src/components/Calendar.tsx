@@ -6,13 +6,12 @@ import {
   Typography,
   Container,
   IconButton,
-  Grid,
   Paper,
   Chip,
-  Badge,
   CircularProgress,
   Tooltip,
 } from '@mui/material';
+import Grid from '@mui/material/GridLegacy';
 import {
   ChevronLeft,
   ChevronRight,
@@ -132,7 +131,7 @@ export const Calendar: React.FC = () => {
     return monthTasks[day]?.length || 0;
   };
 
-  const getPriorityDotsForDay = (day: number): JSX.Element[] => {
+  const getPriorityDotsForDay = (day: number): React.ReactElement[] => {
     const tasks = monthTasks[day] || [];
     const priorities = new Set(tasks.map(t => t.priority));
     
@@ -170,7 +169,7 @@ export const Calendar: React.FC = () => {
     // Empty cells before first day
     for (let i = 0; i < firstDay; i++) {
       days.push(
-        <Grid size={{ xs: 12 / 7 }} key={`empty-${i}`}>
+        <Grid item xs={12 / 7} key={`empty-${i}`}>
           <Box sx={{ aspectRatio: '1', p: 1 }} />
         </Grid>
       );
@@ -183,7 +182,7 @@ export const Calendar: React.FC = () => {
       const taskCount = getTaskCountForDay(day);
 
       days.push(
-        <Grid size={{ xs: 12 / 7 }} key={day}>
+        <Grid item xs={12 / 7} key={day}>
           <Tooltip title={getTooltipContent(day)} arrow>
             <Paper
               elevation={selected ? 8 : today ? 2 : 0}
@@ -314,7 +313,7 @@ export const Calendar: React.FC = () => {
           {/* Day Names */}
           <Grid container spacing={1} sx={{ mb: 2 }}>
             {dayNames.map((day) => (
-              <Grid size={{ xs: 12 / 7 }} key={day}>
+              <Grid item xs={12 / 7} key={day}>
                 <Box
                   sx={{
                     textAlign: 'center',

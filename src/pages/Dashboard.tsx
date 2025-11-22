@@ -5,12 +5,12 @@ import {
   Typography,
   Card,
   CardContent,
-  Grid,
   Fab,
   CircularProgress,
   Alert,
   Chip,
 } from '@mui/material';
+import Grid from '@mui/material/GridLegacy';
 import { Add as AddIcon, CheckCircle, Schedule, Share } from '@mui/icons-material';
 import { getTasks } from '../utils/api';
 import type { Task } from '../types';

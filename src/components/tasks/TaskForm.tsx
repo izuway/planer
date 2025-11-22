@@ -23,7 +23,7 @@ import { ru } from 'date-fns/locale';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save as SaveIcon, Cancel as CancelIcon } from '@mui/icons-material';
 import { createTask, updateTask, getTaskById, getTags } from '../../utils/api';
-import type { CreateTaskDTO, UpdateTaskDTO, Task, Tag, TaskPriority, TaskStatus } from '../../types';
+import type { CreateTaskDTO, UpdateTaskDTO, Tag, TaskPriority, TaskStatus } from '../../types';
 
 export const TaskForm: React.FC = () => {
   const navigate = useNavigate();

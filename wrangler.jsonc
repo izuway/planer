@@ -12,12 +12,10 @@
 	},
 	"observability": {
 		"enabled": true
-	}
-	,
- "vars":
- 	{
- 		"My_NAME": "Malik"
- 	},
+	},
+	"vars": {
+		"My_NAME": "Malik"
+	},
 	"d1_databases": [
 		{
 			"binding": "DB",
