@@ -29,6 +29,8 @@ import {
   Facebook,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { storage } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const Profile: React.FC = () => {
   const { user, updateUserProfile } = useAuth();
@@ -41,6 +43,7 @@ export const Profile: React.FC = () => {
   // Profile data state
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [previewURL, setPreviewURL] = useState(user?.photoURL || '');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   // Social media links
   const [instagram, setInstagram] = useState('');
@@ -74,6 +77,9 @@ export const Profile: React.FC = () => {
         return;
       }
 
+      // Save file for upload
+      setUploadedFile(file);
+      
       // Create preview URL
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -103,8 +109,34 @@ export const Profile: React.FC = () => {
         return;
       }
 
+      let photoURL = user?.photoURL || '';
+
+      // Upload file to Firebase Storage if new file selected
+      if (uploadedFile && user) {
+        try {
+          // Create a reference to the file in Storage
+          const fileExtension = uploadedFile.name.split('.').pop();
+          const fileName = `profile_${user.uid}_${Date.now()}.${fileExtension}`;
+          const storageRef = ref(storage, `avatars/${fileName}`);
+          
+          // Upload the file
+          await uploadBytes(storageRef, uploadedFile);
+          
+          // Get the download URL
+          photoURL = await getDownloadURL(storageRef);
+        } catch (uploadErr: any) {
+          console.error('File upload error:', uploadErr);
+          setError('Failed to upload photo. Please try again.');
+          setLoading(false);
+          return;
+        }
+      }
+
       // Update Firebase profile
-      await updateUserProfile(displayName.trim(), previewURL || undefined);
+      await updateUserProfile(displayName.trim(), photoURL || undefined);
+      
+      // Clear uploaded file
+      setUploadedFile(null);
       
       // TODO: Save social media links to Firestore or database
       // For now, they will be lost on page reload
@@ -125,6 +157,7 @@ export const Profile: React.FC = () => {
     setEditMode(false);
     setDisplayName(user?.displayName || '');
     setPreviewURL(user?.photoURL || '');
+    setUploadedFile(null);
     setError('');
   };
 

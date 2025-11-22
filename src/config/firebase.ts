@@ -5,6 +5,7 @@ import {
   browserLocalPersistence,
   setPersistence 
 } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -21,6 +22,9 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Authentication
 export const auth = getAuth(app);
+
+// Initialize Firebase Storage
+export const storage = getStorage(app);
 
 // Set persistence to LOCAL (stores in localStorage)
 setPersistence(auth, browserLocalPersistence).catch((error) => {
