@@ -51,10 +51,11 @@ import './App.css'
 import { useAuth } from './contexts/AuthContext'
 import { Login } from './components/Login'
 import { Register } from './components/Register'
+import { PasswordReset } from './components/PasswordReset'
 
 function App() {
   const { user, loading: authLoading, signOut, sendVerificationEmail, getIdToken } = useAuth();
-  const [showLogin, setShowLogin] = useState(true);
+  const [authView, setAuthView] = useState<'login' | 'register' | 'reset'>('login');
 
   // Определяем системную тему
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
@@ -180,10 +181,17 @@ function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        {showLogin ? (
-          <Login onSwitchToRegister={() => setShowLogin(false)} />
-        ) : (
-          <Register onSwitchToLogin={() => setShowLogin(true)} />
+        {authView === 'login' && (
+          <Login 
+            onSwitchToRegister={() => setAuthView('register')} 
+            onSwitchToPasswordReset={() => setAuthView('reset')}
+          />
+        )}
+        {authView === 'register' && (
+          <Register onSwitchToLogin={() => setAuthView('login')} />
+        )}
+        {authView === 'reset' && (
+          <PasswordReset onBackToLogin={() => setAuthView('login')} />
         )}
       </ThemeProvider>
     );

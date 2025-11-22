@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   Box,
   Card,
@@ -17,9 +17,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface LoginProps {
   onSwitchToRegister: () => void;
+  onSwitchToPasswordReset: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onSwitchToRegister }) => {
+export const Login: React.FC<LoginProps> = ({ onSwitchToRegister, onSwitchToPasswordReset }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -137,6 +138,19 @@ export const Login: React.FC<LoginProps> = ({ onSwitchToRegister }) => {
                 }}
               />
 
+              <Box sx={{ textAlign: 'right', mt: 1 }}>
+                <Link
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={onSwitchToPasswordReset}
+                  disabled={loading}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  Forgot password?
+                </Link>
+              </Box>
+
               <Button
                 type="submit"
                 fullWidth
@@ -169,4 +183,3 @@ export const Login: React.FC<LoginProps> = ({ onSwitchToRegister }) => {
     </Container>
   );
 };
-
