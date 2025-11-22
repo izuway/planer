@@ -2,15 +2,59 @@
  * API utility functions with Firebase Auth integration
  */
 
+import { auth } from '../config/firebase';
+
 /**
- * Get the Firebase auth token from localStorage
+ * Get the Firebase auth token from localStorage or refresh it
  */
-const getAuthToken = (): string | null => {
-  return localStorage.getItem('firebaseToken');
+const getAuthToken = async (): Promise<string | null> => {
+  // Try to get cached token first
+  const cachedToken = localStorage.getItem('firebaseToken');
+  
+  if (cachedToken && auth.currentUser) {
+    // Check if token is still valid (not expired)
+    try {
+      // Try to get fresh token (Firebase will return cached if still valid)
+      const freshToken = await auth.currentUser.getIdToken(false);
+      if (freshToken !== cachedToken) {
+        localStorage.setItem('firebaseToken', freshToken);
+      }
+      return freshToken;
+    } catch (error) {
+      console.error('Error refreshing token:', error);
+      // Token might be expired, try to force refresh
+      if (auth.currentUser) {
+        try {
+          const newToken = await auth.currentUser.getIdToken(true);
+          localStorage.setItem('firebaseToken', newToken);
+          return newToken;
+        } catch (refreshError) {
+          console.error('Error force refreshing token:', refreshError);
+          localStorage.removeItem('firebaseToken');
+          return null;
+        }
+      }
+      return null;
+    }
+  }
+  
+  // If no cached token but user is logged in, get fresh token
+  if (auth.currentUser) {
+    try {
+      const token = await auth.currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', token);
+      return token;
+    } catch (error) {
+      console.error('Error getting ID token:', error);
+      return null;
+    }
+  }
+  
+  return null;
 };
 
 /**
- * Make an authenticated API request
+ * Make an authenticated API request with automatic token refresh
  * @param endpoint - API endpoint (e.g., '/api/profile')
  * @param options - Fetch options
  */
@@ -18,10 +62,12 @@ export const authenticatedFetch = async (
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> => {
-  const token = getAuthToken();
+  let token = await getAuthToken();
 
   if (!token) {
-    throw new Error('No authentication token found');
+    // Clear any stale token
+    localStorage.removeItem('firebaseToken');
+    throw new Error('No authentication token found. Please sign in again.');
   }
 
   const headers = {
@@ -30,14 +76,51 @@ export const authenticatedFetch = async (
     ...options.headers,
   };
 
-  const response = await fetch(endpoint, {
+  let response = await fetch(endpoint, {
     ...options,
     headers,
   });
 
-  // If unauthorized, token might be expired
-  if (response.status === 401) {
+  // If unauthorized, try to refresh token once
+  if (response.status === 401 && auth.currentUser) {
+    try {
+      // Force refresh token
+      const newToken = await auth.currentUser.getIdToken(true);
+      localStorage.setItem('firebaseToken', newToken);
+      
+      // Retry request with new token
+      const retryHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${newToken}`,
+        ...options.headers,
+      };
+      
+      response = await fetch(endpoint, {
+        ...options,
+        headers: retryHeaders,
+      });
+      
+      // If still unauthorized after refresh, token is truly invalid
+      if (response.status === 401) {
+        localStorage.removeItem('firebaseToken');
+        // Dispatch custom event for auth expiration
+        window.dispatchEvent(new CustomEvent('auth-expired'));
+        throw new Error('Authentication expired. Please sign in again.');
+      }
+    } catch (error: any) {
+      // If refresh failed, clear token and throw error
+      localStorage.removeItem('firebaseToken');
+      window.dispatchEvent(new CustomEvent('auth-expired'));
+      
+      if (error.message && error.message.includes('Authentication expired')) {
+        throw error;
+      }
+      throw new Error('Authentication expired. Please sign in again.');
+    }
+  } else if (response.status === 401) {
+    // No user logged in
     localStorage.removeItem('firebaseToken');
+    window.dispatchEvent(new CustomEvent('auth-expired'));
     throw new Error('Authentication expired. Please sign in again.');
   }
 

@@ -82,6 +82,32 @@ function AppRouter() {
     }
   }, [user, getIdToken]);
 
+  // Handle authentication expiration
+  useEffect(() => {
+    const handleAuthExpired = async () => {
+      // Clear any cached tokens
+      localStorage.removeItem('firebaseToken');
+      
+      // Sign out user if still logged in
+      if (user) {
+        try {
+          await signOut();
+        } catch (error) {
+          console.error('Error signing out on auth expiration:', error);
+        }
+      }
+      
+      // Switch to login view
+      setAuthView('login');
+    };
+
+    window.addEventListener('auth-expired', handleAuthExpired);
+    
+    return () => {
+      window.removeEventListener('auth-expired', handleAuthExpired);
+    };
+  }, [user, signOut]);
+
   const theme = useMemo(
     () =>
       createTheme({

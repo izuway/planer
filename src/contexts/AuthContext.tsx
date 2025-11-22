@@ -47,10 +47,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
+      
+      // Automatically refresh token when user is logged in
+      if (firebaseUser && firebaseUser.emailVerified) {
+        try {
+          const token = await firebaseUser.getIdToken(true);
+          localStorage.setItem('firebaseToken', token);
+        } catch (error) {
+          console.error('Error refreshing token on auth state change:', error);
+        }
+      } else {
+        // Clear token if user is not logged in
+        localStorage.removeItem('firebaseToken');
+      }
     });
 
     return unsubscribe;
   }, []);
+
+  // Set up automatic token refresh before expiration
+  useEffect(() => {
+    if (!user || !user.emailVerified) return;
+
+    const refreshTokenPeriodically = async () => {
+      try {
+        // Refresh token every 50 minutes (tokens expire after 1 hour)
+        const token = await user.getIdToken(true);
+        localStorage.setItem('firebaseToken', token);
+      } catch (error) {
+        console.error('Error refreshing token periodically:', error);
+        localStorage.removeItem('firebaseToken');
+      }
+    };
+
+    // Refresh immediately
+    refreshTokenPeriodically();
+
+    // Set up interval to refresh every 50 minutes
+    const interval = setInterval(refreshTokenPeriodically, 50 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   const signIn = async (email: string, password: string) => {
     try {
