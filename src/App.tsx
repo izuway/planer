@@ -25,7 +25,6 @@ import {
   ThemeProvider,
   createTheme,
   CssBaseline,
-  useMediaQuery,
   Switch,
   CircularProgress,
   Alert,
@@ -52,18 +51,22 @@ import { useAuth } from './contexts/AuthContext'
 import { Login } from './components/Login'
 import { Register } from './components/Register'
 import { PasswordReset } from './components/PasswordReset'
+import { Profile } from './components/Profile'
 
 function App() {
   const { user, loading: authLoading, signOut, sendVerificationEmail, getIdToken } = useAuth();
   const [authView, setAuthView] = useState<'login' | 'register' | 'reset'>('login');
+  const [currentView, setCurrentView] = useState<'main' | 'profile'>('main');
 
-  // Определяем системную тему
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
-  
-  // Состояние темы: 'light', 'dark', или 'auto'
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>(() => {
+  // Состояние темы: 'light' или 'dark'
+  // При первом входе определяем системную тему
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
     const savedMode = localStorage.getItem('themeMode')
-    return (savedMode as 'light' | 'dark' | 'auto') || 'auto'
+    if (savedMode === 'light' || savedMode === 'dark') {
+      return savedMode
+    }
+    // Первый вход - определяем системную тему
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
 
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -83,17 +86,12 @@ function App() {
     }
   }, [user, getIdToken]);
 
-  // Определяем фактическую тему (с учетом auto режима)
-  const actualMode = themeMode === 'auto' 
-    ? (prefersDarkMode ? 'dark' : 'light')
-    : themeMode
-
   // Создаем тему
   const theme = useMemo(
     () =>
       createTheme({
         palette: {
-          mode: actualMode,
+          mode: themeMode,
           primary: {
             main: '#1976d2',
           },
@@ -102,7 +100,7 @@ function App() {
           },
         },
       }),
-    [actualMode]
+    [themeMode]
   )
 
   const toggleDrawer = (open: boolean) => () => {
@@ -113,15 +111,10 @@ function App() {
   const handleModalClose = () => setModalOpen(false)
 
   const handleThemeToggle = () => {
-    setThemeMode((prev) => {
-      if (prev === 'auto') return 'light'
-      if (prev === 'light') return 'dark'
-      return 'auto'
-    })
+    setThemeMode((prev) => prev === 'light' ? 'dark' : 'light')
   }
 
   const getThemeLabel = () => {
-    if (themeMode === 'auto') return `Авто (${actualMode === 'dark' ? 'Темная' : 'Светлая'})`
     return themeMode === 'dark' ? 'Темная' : 'Светлая'
   }
 
@@ -337,9 +330,18 @@ function App() {
           <List>
             {['Главная', 'Планировщик', 'Календарь', 'Настройки'].map((text, index) => {
               const icons = [<HomeIcon />, <DashboardIcon />, <CalendarIcon />, <SettingsIcon />]
+              const handleClick = () => {
+                if (index === 0) {
+                  setCurrentView('main')
+                  setNavigationValue(0)
+                } else if (index === 3) {
+                  setCurrentView('profile')
+                  setNavigationValue(2)
+                }
+              }
               return (
                 <ListItem key={text} disablePadding>
-                  <ListItemButton>
+                  <ListItemButton onClick={handleClick}>
                     <ListItemIcon>{icons[index]}</ListItemIcon>
                     <ListItemText primary={text} />
                   </ListItemButton>
@@ -351,7 +353,7 @@ function App() {
           <List>
             <ListItem>
               <ListItemIcon>
-                {actualMode === 'dark' ? <DarkModeIcon /> : <LightModeIcon />}
+                {themeMode === 'dark' ? <DarkModeIcon /> : <LightModeIcon />}
               </ListItemIcon>
               <ListItemText 
                 primary="Тема" 
@@ -360,7 +362,7 @@ function App() {
               <Switch
                 edge="end"
                 onChange={handleThemeToggle}
-                checked={themeMode !== 'auto'}
+                checked={themeMode === 'dark'}
                 inputProps={{
                   'aria-label': 'переключатель темы',
                 }}
@@ -388,13 +390,17 @@ function App() {
           pb: 10, // Отступ для Bottom Navigation
         }}
       >
-        <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
-          Welcome to Planer!
-        </Typography>
+        {currentView === 'profile' ? (
+          <Profile />
+        ) : (
+          <>
+            <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+              Welcome to Planer!
+            </Typography>
 
-        <Alert severity="success" sx={{ mb: 3 }}>
-          Your email is verified! You now have full access to the application.
-        </Alert>
+            <Alert severity="success" sx={{ mb: 3 }}>
+              Your email is verified! You now have full access to the application.
+            </Alert>
 
         <Grid container spacing={3}>
           {/* Card Examples */}
@@ -514,6 +520,8 @@ function App() {
             </Card>
           </Grid>
         </Grid>
+          </>
+        )}
       </Container>
 
       {/* Modal */}
@@ -551,6 +559,9 @@ function App() {
           value={navigationValue}
           onChange={(_event, newValue) => {
             setNavigationValue(newValue)
+            // Switch view based on navigation
+            if (newValue === 0) setCurrentView('main')
+            if (newValue === 2) setCurrentView('profile')
           }}
         >
           <BottomNavigationAction label="Главная" icon={<HomeIcon />} />
