@@ -20,78 +20,95 @@ export class TaskService {
    * Get tasks for a user with optional filters
    */
   async getTasks(userId: string, filters: TaskFilters = {}): Promise<Task[]> {
-    let query = `
-      SELECT t.*, 
-        GROUP_CONCAT(DISTINCT tag.id) as tag_ids,
-        GROUP_CONCAT(DISTINCT tag.name) as tag_names,
-        GROUP_CONCAT(DISTINCT tag.color) as tag_colors
-      FROM tasks t
-      LEFT JOIN task_tags tt ON t.id = tt.task_id
-      LEFT JOIN tags tag ON tt.tag_id = tag.id
-      WHERE (t.user_id = ? OR t.id IN (
-        SELECT task_id FROM task_shares WHERE shared_with_id = ?
-      ))
-    `;
-    
-    const params: any[] = [userId, userId];
-    
-    // Apply filters
-    if (!filters.include_archived) {
-      query += ' AND t.is_archived = 0';
-    }
-    
-    if (filters.status) {
-      query += ' AND t.status = ?';
-      params.push(filters.status);
-    }
-    
-    if (filters.priority) {
-      query += ' AND t.priority = ?';
-      params.push(filters.priority);
-    }
-    
-    if (filters.date) {
-      query += ` AND DATE(t.start_datetime) = ?`;
-      params.push(filters.date);
-    }
-    
-    if (filters.start_date && filters.end_date) {
-      query += ` AND DATE(t.start_datetime) BETWEEN ? AND ?`;
-      params.push(filters.start_date, filters.end_date);
-    }
-    
-    if (filters.search) {
-      query += ` AND (t.title LIKE ? OR t.description LIKE ?)`;
-      const searchTerm = `%${filters.search}%`;
-      params.push(searchTerm, searchTerm);
-    }
-    
-    if (filters.only_shared) {
-      query += ` AND t.user_id != ?`;
-      params.push(userId);
-    }
-    
-    query += ' GROUP BY t.id';
-    
-    // Sorting
-    const sortBy = filters.sort_by || 'start_datetime';
-    const sortOrder = filters.sort_order || 'asc';
-    query += ` ORDER BY t.${sortBy} ${sortOrder}`;
-    
-    // Pagination
-    if (filters.limit) {
-      query += ' LIMIT ?';
-      params.push(filters.limit);
+    try {
+      let query = `
+        SELECT t.*, 
+          GROUP_CONCAT(DISTINCT tag.id) as tag_ids,
+          GROUP_CONCAT(DISTINCT tag.name) as tag_names,
+          GROUP_CONCAT(DISTINCT tag.color) as tag_colors
+        FROM tasks t
+        LEFT JOIN task_tags tt ON t.id = tt.task_id
+        LEFT JOIN tags tag ON tt.tag_id = tag.id
+        WHERE (t.user_id = ? OR t.id IN (
+          SELECT task_id FROM task_shares WHERE shared_with_id = ?
+        ))
+      `;
       
-      if (filters.page && filters.page > 1) {
-        query += ' OFFSET ?';
-        params.push((filters.page - 1) * filters.limit);
+      const params: any[] = [userId, userId];
+      
+      // Apply filters
+      if (!filters.include_archived) {
+        query += ' AND t.is_archived = 0';
       }
+      
+      if (filters.status) {
+        query += ' AND t.status = ?';
+        params.push(filters.status);
+      }
+      
+      if (filters.priority) {
+        query += ' AND t.priority = ?';
+        params.push(filters.priority);
+      }
+      
+      if (filters.date) {
+        query += ` AND DATE(t.start_datetime) = ?`;
+        params.push(filters.date);
+      }
+      
+      if (filters.start_date && filters.end_date) {
+        query += ` AND DATE(t.start_datetime) BETWEEN ? AND ?`;
+        params.push(filters.start_date, filters.end_date);
+      }
+      
+      if (filters.search) {
+        query += ` AND (t.title LIKE ? OR t.description LIKE ?)`;
+        const searchTerm = `%${filters.search}%`;
+        params.push(searchTerm, searchTerm);
+      }
+      
+      if (filters.only_shared) {
+        query += ` AND t.user_id != ?`;
+        params.push(userId);
+      }
+      
+      // Filter by tags
+      if (filters.tags && filters.tags.length > 0) {
+        query += ` AND t.id IN (
+          SELECT DISTINCT task_id FROM task_tags WHERE tag_id IN (${filters.tags.map(() => '?').join(',')})
+        )`;
+        params.push(...filters.tags);
+      }
+      
+      query += ' GROUP BY t.id';
+      
+      // Sorting
+      const sortBy = filters.sort_by || 'start_datetime';
+      const sortOrder = filters.sort_order || 'asc';
+      query += ` ORDER BY t.${sortBy} ${sortOrder}`;
+      
+      // Pagination
+      if (filters.limit) {
+        query += ' LIMIT ?';
+        params.push(filters.limit);
+        
+        if (filters.page && filters.page > 1) {
+          query += ' OFFSET ?';
+          params.push((filters.page - 1) * filters.limit);
+        }
+      }
+      
+      const result = await this.db.prepare(query).bind(...params).all();
+      
+      if (!result.success) {
+        throw new Error(`Database query failed: ${result.error || 'Unknown error'}`);
+      }
+      
+      return (result.results as any[]).map(row => this.mapRowToTask(row));
+    } catch (error: any) {
+      console.error('Error in getTasks:', error);
+      throw new Error(`Failed to fetch tasks: ${error.message || 'Unknown error'}`);
     }
-    
-    const result = await this.db.prepare(query).bind(...params).all();
-    
-    return (result.results as any[]).map(row => this.mapRowToTask(row));
   }
 
   /**

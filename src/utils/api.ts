@@ -198,14 +198,31 @@ export const getTasks = async (filters?: TaskFilters): Promise<Task[]> => {
   }
   
   const endpoint = `/api/tasks${params.toString() ? `?${params.toString()}` : ''}`;
-  const response = await authenticatedFetch(endpoint);
   
-  if (!response.ok) {
-    throw new Error('Failed to fetch tasks');
+  try {
+    const response = await authenticatedFetch(endpoint);
+    
+    if (!response.ok) {
+      let errorMessage = 'Failed to fetch tasks';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch {
+        // If response is not JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const data: ApiResponse<Task[]> = await response.json();
+    return data.data || [];
+  } catch (error: any) {
+    // Re-throw with more context if it's not already an Error
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Failed to fetch tasks: ${error?.message || 'Unknown error'}`);
   }
-  
-  const data: ApiResponse<Task[]> = await response.json();
-  return data.data || [];
 };
 
 /**
