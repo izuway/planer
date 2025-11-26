@@ -5,6 +5,72 @@
 import { auth } from '../config/firebase';
 
 /**
+ * Safely stringify an object, handling circular references
+ */
+const safeStringify = (obj: any, maxDepth: number = 3, currentDepth: number = 0): string => {
+  if (currentDepth >= maxDepth) {
+    return '[Max Depth Reached]';
+  }
+  
+  if (obj === null || obj === undefined) {
+    return String(obj);
+  }
+  
+  if (typeof obj !== 'object') {
+    return String(obj);
+  }
+  
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '[]';
+    const items = obj.slice(0, 5).map(item => safeStringify(item, maxDepth, currentDepth + 1));
+    return `[${items.join(', ')}${obj.length > 5 ? ', ...' : ''}]`;
+  }
+  
+  try {
+    const keys = Object.keys(obj).slice(0, 10);
+    const pairs = keys.map(key => {
+      try {
+        const value = safeStringify(obj[key], maxDepth, currentDepth + 1);
+        return `${key}: ${value}`;
+      } catch {
+        return `${key}: [Error serializing]`;
+      }
+    });
+    return `{${pairs.join(', ')}${Object.keys(obj).length > 10 ? ', ...' : ''}}`;
+  } catch {
+    return '[Object]';
+  }
+};
+
+/**
+ * Safely log an object to console, handling circular references
+ */
+const safeLog = (label: string, obj: any): void => {
+  try {
+    if (obj === null || obj === undefined) {
+      console.error(label, obj);
+      return;
+    }
+    
+    if (typeof obj !== 'object') {
+      console.error(label, obj);
+      return;
+    }
+    
+    // Try JSON.stringify first (it handles most cases)
+    try {
+      const str = JSON.stringify(obj, null, 2);
+      console.error(label, JSON.parse(str));
+    } catch {
+      // If JSON.stringify fails, use safe stringify
+      console.error(label, safeStringify(obj));
+    }
+  } catch (error) {
+    console.error(label, '[Error logging object]', error instanceof Error ? error.message : String(error));
+  }
+};
+
+/**
  * Get the Firebase auth token from localStorage or refresh it
  */
 const getAuthToken = async (): Promise<string | null> => {
@@ -208,29 +274,70 @@ export const getTasks = async (filters?: TaskFilters): Promise<Task[]> => {
     throw error;
   }
   
-  if (!response.ok) {
-    let errorMessage = 'Failed to fetch tasks';
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.message || errorData.error || errorMessage;
-      console.error('API error response:', errorData);
-    } catch (parseError) {
-      // If response is not JSON, use status text
-      errorMessage = `${response.status} ${response.statusText || 'Unknown error'}`;
-      console.error('Failed to parse error response:', parseError);
-    }
-    throw new Error(errorMessage);
+  // Read response body once
+  let responseText: string;
+  try {
+    responseText = await response.text();
+  } catch (readError: any) {
+    console.error('Failed to read response:', readError);
+    throw new Error(`Failed to read response: ${response.status} ${response.statusText || 'Unknown error'}`);
   }
   
+  if (!response.ok) {
+    let errorMessage = 'Failed to fetch tasks';
+    let errorData: any = null;
+    
+    try {
+      if (responseText) {
+        try {
+          errorData = JSON.parse(responseText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch {
+          // If not JSON, use text as error message (but limit length to avoid recursion)
+          errorMessage = responseText.length > 200 ? responseText.substring(0, 200) + '...' : responseText;
+        }
+      } else {
+        errorMessage = `${response.status} ${response.statusText || 'Unknown error'}`;
+      }
+      
+      // Safe logging to avoid stack overflow from circular references
+      safeLog('API error response:', errorData);
+      console.error('Status:', response.status);
+    } catch (parseError) {
+      errorMessage = `${response.status} ${response.statusText || 'Unknown error'}`;
+      const parseErrorMsg = parseError instanceof Error ? parseError.message : String(parseError);
+      console.error('Failed to parse error response:', parseErrorMsg);
+    }
+    
+    // Create simple error without complex message to avoid recursion
+    const error = new Error(String(errorMessage));
+    error.name = 'APIError';
+    throw error;
+  }
+  
+  // Parse successful response
   try {
-    const data: ApiResponse<Task[]> = await response.json();
+    if (!responseText) {
+      throw new Error('Empty response from server');
+    }
+    
+    const data: ApiResponse<Task[]> = JSON.parse(responseText);
     if (!data.success) {
-      throw new Error(data.error || data.message || 'Failed to fetch tasks');
+      const errorMsg = data.error || data.message || 'Failed to fetch tasks';
+      throw new Error(String(errorMsg));
     }
     return data.data || [];
   } catch (error: any) {
+    // If it's already our APIError, re-throw it
+    if (error.name === 'APIError') {
+      throw error;
+    }
     console.error('Error parsing response:', error);
-    throw new Error(`Failed to parse tasks response: ${error?.message || 'Unknown error'}`);
+    // Create simple error message
+    const errorMsg = error?.message || 'Unknown error';
+    const parseError = new Error(`Failed to parse tasks response: ${String(errorMsg).substring(0, 100)}`);
+    parseError.name = 'ParseError';
+    throw parseError;
   }
 };
 
@@ -240,11 +347,12 @@ export const getTasks = async (filters?: TaskFilters): Promise<Task[]> => {
 export const getTaskById = async (taskId: string): Promise<Task> => {
   const response = await authenticatedFetch(`/api/tasks/${taskId}`);
   
+  const data: ApiResponse<Task> = await response.json();
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch task');
+    throw new Error(data.message || data.error || 'Failed to fetch task');
   }
   
-  const data: ApiResponse<Task> = await response.json();
   if (!data.data) throw new Error('Task not found');
   return data.data;
 };
@@ -258,12 +366,12 @@ export const createTask = async (taskData: CreateTaskDTO): Promise<Task> => {
     body: JSON.stringify(taskData),
   });
   
+  const data: ApiResponse<Task> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create task');
+    throw new Error(data.message || data.error || 'Failed to create task');
   }
   
-  const data: ApiResponse<Task> = await response.json();
   if (!data.data) throw new Error('Failed to create task');
   return data.data;
 };
@@ -277,12 +385,12 @@ export const updateTask = async (taskId: string, updates: UpdateTaskDTO): Promis
     body: JSON.stringify(updates),
   });
   
+  const data: ApiResponse<Task> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update task');
+    throw new Error(data.message || data.error || 'Failed to update task');
   }
   
-  const data: ApiResponse<Task> = await response.json();
   if (!data.data) throw new Error('Failed to update task');
   return data.data;
 };
@@ -321,11 +429,12 @@ export const duplicateTask = async (taskId: string): Promise<Task> => {
     method: 'POST',
   });
   
+  const data: ApiResponse<Task> = await response.json();
+  
   if (!response.ok) {
-    throw new Error('Failed to duplicate task');
+    throw new Error(data.message || data.error || 'Failed to duplicate task');
   }
   
-  const data: ApiResponse<Task> = await response.json();
   if (!data.data) throw new Error('Failed to duplicate task');
   return data.data;
 };
@@ -336,11 +445,12 @@ export const duplicateTask = async (taskId: string): Promise<Task> => {
 export const getTaskHistory = async (taskId: string): Promise<TaskHistory[]> => {
   const response = await authenticatedFetch(`/api/tasks/${taskId}/history`);
   
+  const data: ApiResponse<TaskHistory[]> = await response.json();
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch task history');
+    throw new Error(data.message || data.error || 'Failed to fetch task history');
   }
   
-  const data: ApiResponse<TaskHistory[]> = await response.json();
   return data.data || [];
 };
 
@@ -362,12 +472,12 @@ export const createRecurrenceRule = async (
     body: JSON.stringify(rule),
   });
   
+  const data: ApiResponse<RecurrenceRule> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create recurrence rule');
+    throw new Error(data.message || data.error || 'Failed to create recurrence rule');
   }
   
-  const data: ApiResponse<RecurrenceRule> = await response.json();
   if (!data.data) throw new Error('Failed to create recurrence rule');
   return data.data;
 };
@@ -378,14 +488,15 @@ export const createRecurrenceRule = async (
 export const getRecurrenceRule = async (taskId: string): Promise<RecurrenceRule | null> => {
   const response = await authenticatedFetch(`/api/tasks/${taskId}/recurrence`);
   
+  const data: ApiResponse<RecurrenceRule> = await response.json();
+  
   if (!response.ok) {
     if (response.status === 404) {
       return null;
     }
-    throw new Error('Failed to fetch recurrence rule');
+    throw new Error(data.message || data.error || 'Failed to fetch recurrence rule');
   }
   
-  const data: ApiResponse<RecurrenceRule> = await response.json();
   return data.data || null;
 };
 
@@ -401,12 +512,12 @@ export const updateRecurrenceRule = async (
     body: JSON.stringify(updates),
   });
   
+  const data: ApiResponse<RecurrenceRule> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update recurrence rule');
+    throw new Error(data.message || data.error || 'Failed to update recurrence rule');
   }
   
-  const data: ApiResponse<RecurrenceRule> = await response.json();
   if (!data.data) throw new Error('Failed to update recurrence rule');
   return data.data;
 };
@@ -449,12 +560,12 @@ export const generateTaskInstances = async (
     }
   );
   
+  const data: ApiResponse<TaskInstance[]> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to generate instances');
+    throw new Error(data.message || data.error || 'Failed to generate instances');
   }
   
-  const data: ApiResponse<TaskInstance[]> = await response.json();
   return data.data || [];
 };
 
@@ -464,11 +575,12 @@ export const generateTaskInstances = async (
 export const getTaskInstances = async (taskId: string): Promise<TaskInstance[]> => {
   const response = await authenticatedFetch(`/api/tasks/${taskId}/instances`);
   
+  const data: ApiResponse<TaskInstance[]> = await response.json();
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch task instances');
+    throw new Error(data.message || data.error || 'Failed to fetch task instances');
   }
   
-  const data: ApiResponse<TaskInstance[]> = await response.json();
   return data.data || [];
 };
 
@@ -484,11 +596,12 @@ import type { Tag, CreateTagDTO, UpdateTagDTO } from '../types';
 export const getTags = async (): Promise<Tag[]> => {
   const response = await authenticatedFetch('/api/tags');
   
+  const data: ApiResponse<Tag[]> = await response.json();
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch tags');
+    throw new Error(data.message || data.error || 'Failed to fetch tags');
   }
   
-  const data: ApiResponse<Tag[]> = await response.json();
   return data.data || [];
 };
 
@@ -501,12 +614,12 @@ export const createTag = async (tagData: CreateTagDTO): Promise<Tag> => {
     body: JSON.stringify(tagData),
   });
   
+  const data: ApiResponse<Tag> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to create tag');
+    throw new Error(data.message || data.error || 'Failed to create tag');
   }
   
-  const data: ApiResponse<Tag> = await response.json();
   if (!data.data) throw new Error('Failed to create tag');
   return data.data;
 };
@@ -520,12 +633,12 @@ export const updateTag = async (tagId: string, updates: UpdateTagDTO): Promise<T
     body: JSON.stringify(updates),
   });
   
+  const data: ApiResponse<Tag> = await response.json();
+  
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to update tag');
+    throw new Error(data.message || data.error || 'Failed to update tag');
   }
   
-  const data: ApiResponse<Tag> = await response.json();
   if (!data.data) throw new Error('Failed to update tag');
   return data.data;
 };

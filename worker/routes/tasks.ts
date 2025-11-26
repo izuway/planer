@@ -21,36 +21,124 @@ tasks.get('/', async (c) => {
   const taskService = new TaskService(c.env.DB);
 
   // Parse query parameters
+  const includeArchivedParam = c.req.query('include_archived');
+  const includeSharedParam = c.req.query('include_shared');
+  const onlySharedParam = c.req.query('only_shared');
+  
   const filters: TaskFilters = {
-    date: c.req.query('date'),
-    start_date: c.req.query('start_date'),
-    end_date: c.req.query('end_date'),
-    status: c.req.query('status') as any,
-    priority: c.req.query('priority') as any,
-    tags: c.req.query('tags')?.split(','),
-    search: c.req.query('search'),
-    include_archived: c.req.query('include_archived') === 'true',
-    include_shared: c.req.query('include_shared') === 'true',
-    only_shared: c.req.query('only_shared') === 'true',
-    sort_by: c.req.query('sort_by') as any,
-    sort_order: c.req.query('sort_order') as any,
+    date: c.req.query('date') || undefined,
+    start_date: c.req.query('start_date') || undefined,
+    end_date: c.req.query('end_date') || undefined,
+    status: c.req.query('status') as any || undefined,
+    priority: c.req.query('priority') as any || undefined,
+    tags: c.req.query('tags') ? c.req.query('tags')!.split(',').filter(t => t.trim()) : undefined,
+    search: c.req.query('search') || undefined,
+    include_archived: includeArchivedParam === 'true' || includeArchivedParam === '1',
+    include_shared: includeSharedParam === 'true' || includeSharedParam === '1',
+    only_shared: onlySharedParam === 'true' || onlySharedParam === '1',
+    sort_by: c.req.query('sort_by') as any || undefined,
+    sort_order: c.req.query('sort_order') as any || undefined,
     page: c.req.query('page') ? parseInt(c.req.query('page')!) : undefined,
     limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
   };
 
   try {
     const tasksList = await taskService.getTasks(user.uid, filters);
+    
+    // Ensure we return plain objects to avoid serialization issues
+    // Use a safe serialization approach to prevent recursion
+    const plainTasks = tasksList.map(task => {
+      const plainTask: any = {
+        id: String(task.id || ''),
+        user_id: String(task.user_id || ''),
+        title: String(task.title || ''),
+        description: task.description ? String(task.description) : undefined,
+        start_datetime: String(task.start_datetime || ''),
+        deadline_datetime: task.deadline_datetime ? String(task.deadline_datetime) : undefined,
+        priority: String(task.priority || 'medium'),
+        status: String(task.status || 'planned'),
+        is_recurring: Boolean(task.is_recurring),
+        recurrence_rule_id: task.recurrence_rule_id ? String(task.recurrence_rule_id) : undefined,
+        is_archived: Boolean(task.is_archived),
+        created_at: task.created_at ? String(task.created_at) : undefined,
+        updated_at: task.updated_at ? String(task.updated_at) : undefined,
+        tags: [],
+      };
+      
+      if (task.tags && Array.isArray(task.tags)) {
+        plainTask.tags = task.tags.map(tag => ({
+          id: String(tag.id || ''),
+          user_id: String(tag.user_id || ''),
+          name: String(tag.name || ''),
+          color: String(tag.color || '#000000'),
+          created_at: tag.created_at ? String(tag.created_at) : undefined,
+        }));
+      }
+      
+      if (task.is_shared !== undefined) {
+        plainTask.is_shared = Boolean(task.is_shared);
+      }
+      if (task.shared_by) {
+        plainTask.shared_by = String(task.shared_by);
+      }
+      if (task.shared_by_name) {
+        plainTask.shared_by_name = String(task.shared_by_name);
+      }
+      if (task.permission) {
+        plainTask.permission = String(task.permission);
+      }
+      
+      return plainTask;
+    });
+    
     return c.json({
       success: true,
-      data: tasksList,
+      data: plainTasks,
     });
   } catch (error: any) {
-    console.error('Error fetching tasks:', error);
+    // Safe error logging to avoid recursion
+    let errorMessage = 'Unknown error';
+    let errorStack: string | undefined;
+    
+    try {
+      if (error instanceof Error) {
+        errorMessage = error.message || 'Unknown error';
+        errorStack = error.stack ? String(error.stack).substring(0, 500) : undefined;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        // Try to extract message safely
+        try {
+          errorMessage = error.message || error.error || String(error);
+        } catch {
+          errorMessage = 'Error object could not be serialized';
+        }
+      } else {
+        errorMessage = String(error);
+      }
+    } catch {
+      errorMessage = 'Error occurred but could not be serialized';
+    }
+    
+    console.error('Error fetching tasks:', errorMessage);
+    if (errorStack) {
+      console.error('Error stack (truncated):', errorStack);
+    }
+    
+    // Safely stringify filters (limit depth to avoid recursion)
+    try {
+      const filtersStr = JSON.stringify(filters, null, 2);
+      console.error('Filters:', filtersStr.length > 500 ? filtersStr.substring(0, 500) + '...' : filtersStr);
+    } catch (stringifyError) {
+      console.error('Could not stringify filters');
+    }
+    
+    // Return simple error response without complex objects
     return c.json(
       {
         success: false,
-        error: 'Failed to fetch tasks',
-        message: error.message,
+        error: 'Internal Server Error',
+        message: errorMessage,
       },
       500
     );

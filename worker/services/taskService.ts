@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Task, CreateTaskDTO, UpdateTaskDTO, TaskFilters } from '../../src/types';
+import type { Task, CreateTaskDTO, UpdateTaskDTO, TaskFilters, SharePermission } from '../../src/types';
 import { nanoid } from 'nanoid';
 import { TaskHistoryService } from './taskHistoryService';
 import { RecurrenceService } from './recurrenceService';
@@ -52,8 +52,10 @@ export class TaskService {
       }
       
       if (filters.date) {
+        // Ensure date is in YYYY-MM-DD format
+        const dateStr = filters.date.split('T')[0]; // Remove time if present
         query += ` AND DATE(t.start_datetime) = ?`;
-        params.push(filters.date);
+        params.push(dateStr);
       }
       
       if (filters.start_date && filters.end_date) {
@@ -82,9 +84,12 @@ export class TaskService {
       
       query += ' GROUP BY t.id';
       
-      // Sorting
-      const sortBy = filters.sort_by || 'start_datetime';
-      const sortOrder = filters.sort_order || 'asc';
+      // Sorting - validate to prevent SQL injection
+      const allowedSortFields = ['start_datetime', 'deadline_datetime', 'created_at', 'updated_at', 'priority', 'status', 'title'];
+      const sortBy = filters.sort_by && allowedSortFields.includes(filters.sort_by) 
+        ? filters.sort_by 
+        : 'start_datetime';
+      const sortOrder = filters.sort_order === 'desc' ? 'desc' : 'asc';
       query += ` ORDER BY t.${sortBy} ${sortOrder}`;
       
       // Pagination
@@ -109,33 +114,98 @@ export class TaskService {
         return [];
       }
       
-      return (result.results as any[]).map(row => {
+      // Convert D1 results to plain objects to avoid serialization issues
+      const plainRows = (result.results as any[]).map(row => {
+        // Extract all properties explicitly to avoid proxy/getter issues
+        const plainRow: any = {};
+        for (const key in row) {
+          if (Object.prototype.hasOwnProperty.call(row, key)) {
+            const value = row[key];
+            // Convert to primitive if possible to avoid circular references
+            if (value === null || value === undefined) {
+              plainRow[key] = value;
+            } else if (typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+              // For objects, try to stringify and parse to get plain object
+              try {
+                plainRow[key] = JSON.parse(JSON.stringify(value));
+              } catch {
+                plainRow[key] = String(value);
+              }
+            } else {
+              plainRow[key] = value;
+            }
+          }
+        }
+        return plainRow;
+      });
+      
+      return plainRows.map(row => {
         try {
-          return this.mapRowToTask(row);
+          // Ensure row is a plain object before mapping
+          const safeRow = row && typeof row === 'object' ? { ...row } : row;
+          return this.mapRowToTask(safeRow);
         } catch (error: any) {
-          console.error('Error mapping task row:', error, row);
+          // Safe error logging to avoid recursion
+          let errorMsg = 'Unknown mapping error';
+          let rowId = 'unknown';
+          
+          try {
+            errorMsg = error?.message || String(error) || 'Unknown mapping error';
+            rowId = row && typeof row === 'object' && 'id' in row ? String(row.id) : 'unknown';
+          } catch {
+            // If we can't extract info, use defaults
+          }
+          
+          console.error('Error mapping task row:', errorMsg, 'Row ID:', rowId);
+          
           // Return a minimal task object if mapping fails
+          // Safely extract values to avoid proxy/getter issues
+          const safeGet = (obj: any, key: string, defaultValue: any = null) => {
+            try {
+              if (obj && typeof obj === 'object' && key in obj) {
+                const value = obj[key];
+                return value === null || value === undefined ? defaultValue : value;
+              }
+              return defaultValue;
+            } catch {
+              return defaultValue;
+            }
+          };
+          
           return {
-            id: row.id,
-            user_id: row.user_id,
-            title: row.title || 'Untitled',
-            description: row.description,
-            start_datetime: row.start_datetime,
-            deadline_datetime: row.deadline_datetime,
-            priority: row.priority || 'medium',
-            status: row.status || 'planned',
-            is_recurring: Boolean(row.is_recurring),
-            recurrence_rule_id: row.recurrence_rule_id,
-            is_archived: Boolean(row.is_archived),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+            id: String(safeGet(row, 'id', '')),
+            user_id: String(safeGet(row, 'user_id', '')),
+            title: String(safeGet(row, 'title', 'Untitled')),
+            description: safeGet(row, 'description') ? String(safeGet(row, 'description')) : undefined,
+            start_datetime: String(safeGet(row, 'start_datetime', new Date().toISOString())),
+            deadline_datetime: safeGet(row, 'deadline_datetime') ? String(safeGet(row, 'deadline_datetime')) : undefined,
+            priority: (safeGet(row, 'priority', 'medium')) as TaskPriority,
+            status: (safeGet(row, 'status', 'planned')) as TaskStatus,
+            is_recurring: Boolean(safeGet(row, 'is_recurring', false)),
+            recurrence_rule_id: safeGet(row, 'recurrence_rule_id') ? String(safeGet(row, 'recurrence_rule_id')) : undefined,
+            is_archived: Boolean(safeGet(row, 'is_archived', false)),
+            created_at: safeGet(row, 'created_at') ? String(safeGet(row, 'created_at')) : undefined,
+            updated_at: safeGet(row, 'updated_at') ? String(safeGet(row, 'updated_at')) : undefined,
             tags: [],
           } as Task;
         }
       });
     } catch (error: any) {
-      console.error('Error in getTasks:', error);
-      throw new Error(`Failed to fetch tasks: ${error.message || 'Unknown error'}`);
+      // Safe error logging to avoid recursion
+      const errorMsg = error?.message || String(error);
+      const errorName = error?.name || 'Error';
+      const errorStack = error?.stack ? String(error.stack).substring(0, 500) : undefined;
+      
+      console.error('Error in getTasks:', errorMsg);
+      if (errorStack) {
+        console.error('Error stack (truncated):', errorStack);
+      }
+      
+      // Re-throw original error if it's already an Error, otherwise wrap it
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(`Failed to fetch tasks: ${errorMsg}`);
     }
   }
 
@@ -470,50 +540,91 @@ export class TaskService {
   }
 
   private mapRowToTask(row: any): Task {
+    // Ensure row is an object to avoid recursion issues
+    if (!row || typeof row !== 'object') {
+      throw new Error('Invalid row data: row must be an object');
+    }
+    
+    // Safely extract values to avoid proxy/getter issues
+    const safeGet = (obj: any, key: string, defaultValue: any = null) => {
+      try {
+        const value = obj[key];
+        return value === null || value === undefined ? defaultValue : value;
+      } catch {
+        return defaultValue;
+      }
+    };
+    
     const task: Task = {
-      id: row.id,
-      user_id: row.user_id,
-      title: row.title,
-      description: row.description,
-      start_datetime: row.start_datetime,
-      deadline_datetime: row.deadline_datetime,
-      priority: row.priority,
-      status: row.status,
-      is_recurring: Boolean(row.is_recurring),
-      recurrence_rule_id: row.recurrence_rule_id,
-      is_archived: Boolean(row.is_archived),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
+      id: String(safeGet(row, 'id', '')),
+      user_id: String(safeGet(row, 'user_id', '')),
+      title: String(safeGet(row, 'title', 'Untitled')),
+      description: safeGet(row, 'description') ? String(safeGet(row, 'description')) : undefined,
+      start_datetime: String(safeGet(row, 'start_datetime', new Date().toISOString())),
+      deadline_datetime: safeGet(row, 'deadline_datetime') ? String(safeGet(row, 'deadline_datetime')) : undefined,
+      priority: (safeGet(row, 'priority', 'medium')) as TaskPriority,
+      status: (safeGet(row, 'status', 'planned')) as TaskStatus,
+      is_recurring: Boolean(safeGet(row, 'is_recurring', false)),
+      recurrence_rule_id: safeGet(row, 'recurrence_rule_id') ? String(safeGet(row, 'recurrence_rule_id')) : undefined,
+      is_archived: Boolean(safeGet(row, 'is_archived', false)),
+      created_at: safeGet(row, 'created_at') ? String(safeGet(row, 'created_at')) : undefined,
+      updated_at: safeGet(row, 'updated_at') ? String(safeGet(row, 'updated_at')) : undefined,
+      tags: [], // Initialize tags array to avoid undefined
     };
     
     // Map tags if available
-    if (row.tag_ids && row.tag_names && row.tag_colors) {
+    const tagIds = safeGet(row, 'tag_ids');
+    const tagNames = safeGet(row, 'tag_names');
+    const tagColors = safeGet(row, 'tag_colors');
+    
+    if (tagIds && tagNames && tagColors) {
       try {
-        const ids = row.tag_ids.split(',').filter((id: string) => id && id.trim());
-        const names = row.tag_names.split(',').filter((name: string) => name && name.trim());
-        const colors = row.tag_colors.split(',').filter((color: string) => color && color.trim());
+        const idsStr = String(tagIds);
+        const namesStr = String(tagNames);
+        const colorsStr = String(tagColors);
         
-        if (ids.length > 0 && ids.length === names.length && ids.length === colors.length) {
-          task.tags = ids.map((id: string, index: number) => ({
-            id: id.trim(),
-            name: names[index]?.trim() || '',
-            color: colors[index]?.trim() || '#000000',
-            user_id: row.user_id,
-          }));
+        if (idsStr && namesStr && colorsStr) {
+          const ids = idsStr.split(',').filter((id: string) => id && id.trim());
+          const names = namesStr.split(',').filter((name: string) => name && name.trim());
+          const colors = colorsStr.split(',').filter((color: string) => color && color.trim());
+          
+          if (ids.length > 0 && ids.length === names.length && ids.length === colors.length) {
+            task.tags = ids.map((id: string, index: number) => ({
+              id: id.trim(),
+              name: names[index]?.trim() || '',
+              color: colors[index]?.trim() || '#000000',
+              user_id: String(safeGet(row, 'user_id', '')),
+            }));
+          }
         }
       } catch (error) {
-        console.error('Error parsing tags:', error, row);
+        // Safe error logging to avoid recursion
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error('Error parsing tags:', errorMsg, 'Row ID:', safeGet(row, 'id'));
         // If tag parsing fails, just skip tags
         task.tags = [];
       }
+    } else {
+      task.tags = [];
     }
     
     // Map shared task metadata
-    if (row.share_owner_id) {
+    const shareOwnerId = safeGet(row, 'share_owner_id');
+    if (shareOwnerId) {
       task.is_shared = true;
-      task.shared_by = row.shared_by_email;
-      task.shared_by_name = row.shared_by_name;
-      task.permission = row.share_permission;
+      const sharedByEmail = safeGet(row, 'shared_by_email');
+      const sharedByName = safeGet(row, 'shared_by_name');
+      const sharePermission = safeGet(row, 'share_permission');
+      
+      if (sharedByEmail) {
+        task.shared_by = String(sharedByEmail);
+      }
+      if (sharedByName) {
+        task.shared_by_name = String(sharedByName);
+      }
+      if (sharePermission) {
+        task.permission = String(sharePermission) as SharePermission;
+      }
     }
     
     return task;
