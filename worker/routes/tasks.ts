@@ -43,7 +43,8 @@ tasks.get('/', async (c) => {
   };
 
   try {
-    console.log('Fetching tasks for user:', user.uid, 'with filters:', JSON.stringify(filters));
+    // Safe logging - avoid JSON.stringify on filters to prevent recursion
+    console.log('Fetching tasks for user:', user.uid);
     
     const tasksList = await taskService.getTasks(user.uid, filters);
     
@@ -53,49 +54,87 @@ tasks.get('/', async (c) => {
     // Use a safe serialization approach to prevent recursion
     const plainTasks = tasksList.map((task, index) => {
       try {
-      const plainTask: any = {
-        id: String(task.id || ''),
-        user_id: String(task.user_id || ''),
-        title: String(task.title || ''),
-        description: task.description ? String(task.description) : undefined,
-        start_datetime: String(task.start_datetime || ''),
-        deadline_datetime: task.deadline_datetime ? String(task.deadline_datetime) : undefined,
-        priority: String(task.priority || 'medium'),
-        status: String(task.status || 'planned'),
-        is_recurring: Boolean(task.is_recurring),
-        recurrence_rule_id: task.recurrence_rule_id ? String(task.recurrence_rule_id) : undefined,
-        is_archived: Boolean(task.is_archived),
-        created_at: task.created_at ? String(task.created_at) : undefined,
-        updated_at: task.updated_at ? String(task.updated_at) : undefined,
-        tags: [],
-      };
-      
-      if (task.tags && Array.isArray(task.tags)) {
-        plainTask.tags = task.tags.map(tag => ({
-          id: String(tag.id || ''),
-          user_id: String(tag.user_id || ''),
-          name: String(tag.name || ''),
-          color: String(tag.color || '#000000'),
-          created_at: tag.created_at ? String(tag.created_at) : undefined,
-        }));
-      }
-      
-      if (task.is_shared !== undefined) {
-        plainTask.is_shared = Boolean(task.is_shared);
-      }
-      if (task.shared_by) {
-        plainTask.shared_by = String(task.shared_by);
-      }
-      if (task.shared_by_name) {
-        plainTask.shared_by_name = String(task.shared_by_name);
-      }
-      if (task.permission) {
-        plainTask.permission = String(task.permission);
-      }
-      
-      return plainTask;
+        // Safely extract task properties to avoid proxy/getter issues
+        const safeGet = (obj: any, key: string, defaultValue: any = null) => {
+          try {
+            if (obj && typeof obj === 'object' && key in obj) {
+              const val = obj[key];
+              return val === null || val === undefined ? defaultValue : val;
+            }
+            return defaultValue;
+          } catch {
+            return defaultValue;
+          }
+        };
+        
+        const plainTask: any = {
+          id: String(safeGet(task, 'id', '')),
+          user_id: String(safeGet(task, 'user_id', '')),
+          title: String(safeGet(task, 'title', '')),
+          description: safeGet(task, 'description') ? String(safeGet(task, 'description')) : undefined,
+          start_datetime: String(safeGet(task, 'start_datetime', '')),
+          deadline_datetime: safeGet(task, 'deadline_datetime') ? String(safeGet(task, 'deadline_datetime')) : undefined,
+          priority: String(safeGet(task, 'priority', 'medium')),
+          status: String(safeGet(task, 'status', 'planned')),
+          is_recurring: Boolean(safeGet(task, 'is_recurring', false)),
+          recurrence_rule_id: safeGet(task, 'recurrence_rule_id') ? String(safeGet(task, 'recurrence_rule_id')) : undefined,
+          is_archived: Boolean(safeGet(task, 'is_archived', false)),
+          created_at: safeGet(task, 'created_at') ? String(safeGet(task, 'created_at')) : undefined,
+          updated_at: safeGet(task, 'updated_at') ? String(safeGet(task, 'updated_at')) : undefined,
+          tags: [],
+        };
+        
+        // Safely extract tags
+        const tags = safeGet(task, 'tags');
+        if (tags && Array.isArray(tags) && tags.length > 0) {
+          try {
+            plainTask.tags = tags.slice(0, 100).map((tag: any) => {
+              try {
+                return {
+                  id: String(safeGet(tag, 'id', '')),
+                  user_id: String(safeGet(tag, 'user_id', '')),
+                  name: String(safeGet(tag, 'name', '')),
+                  color: String(safeGet(tag, 'color', '#000000')),
+                  created_at: safeGet(tag, 'created_at') ? String(safeGet(tag, 'created_at')) : undefined,
+                };
+              } catch {
+                return null;
+              }
+            }).filter((tag: any) => tag !== null);
+          } catch {
+            plainTask.tags = [];
+          }
+        }
+        
+        // Safely extract shared task metadata
+        if (safeGet(task, 'is_shared') !== undefined) {
+          plainTask.is_shared = Boolean(safeGet(task, 'is_shared'));
+        }
+        const sharedBy = safeGet(task, 'shared_by');
+        if (sharedBy) {
+          plainTask.shared_by = String(sharedBy);
+        }
+        const sharedByName = safeGet(task, 'shared_by_name');
+        if (sharedByName) {
+          plainTask.shared_by_name = String(sharedByName);
+        }
+        const permission = safeGet(task, 'permission');
+        if (permission) {
+          plainTask.permission = String(permission);
+        }
+        
+        return plainTask;
       } catch (taskError: any) {
-        const errorMsg = taskError?.message || String(taskError) || 'Unknown task mapping error';
+        // Safe error logging
+        let errorMsg = 'Unknown task mapping error';
+        try {
+          errorMsg = taskError?.message || String(taskError) || 'Unknown task mapping error';
+          if (errorMsg.length > 100) {
+            errorMsg = errorMsg.substring(0, 100);
+          }
+        } catch {
+          errorMsg = 'Error extracting error message';
+        }
         console.error(`Error mapping task at index ${index}:`, errorMsg);
         // Return null and filter it out
         return null;
@@ -138,12 +177,12 @@ tasks.get('/', async (c) => {
       console.error('Error stack (truncated):', errorStack);
     }
     
-    // Safely stringify filters (limit depth to avoid recursion)
+    // Safely log filters without JSON.stringify to avoid recursion
     try {
-      const filtersStr = JSON.stringify(filters, null, 2);
-      console.error('Filters:', filtersStr.length > 500 ? filtersStr.substring(0, 500) + '...' : filtersStr);
-    } catch (stringifyError) {
-      console.error('Could not stringify filters');
+      const filterKeys = Object.keys(filters || {});
+      console.error('Filters keys:', filterKeys.join(', '));
+    } catch {
+      console.error('Could not log filters');
     }
     
     // Return simple error response without complex objects

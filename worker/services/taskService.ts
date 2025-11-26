@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { Task, CreateTaskDTO, UpdateTaskDTO, TaskFilters, SharePermission } from '../../src/types';
+import type { Task, CreateTaskDTO, UpdateTaskDTO, TaskFilters, SharePermission, TaskPriority, TaskStatus } from '../../src/types';
 import { nanoid } from 'nanoid';
 import { TaskHistoryService } from './taskHistoryService';
 import { RecurrenceService } from './recurrenceService';
@@ -134,117 +134,77 @@ export class TaskService {
       }
       
       // Convert D1 results to plain objects to avoid serialization issues
-      // Use a safe conversion that avoids circular references
-      const visited = new WeakSet();
-      const safeConvert = (value: any, depth: number = 0): any => {
-        // Prevent infinite recursion
-        if (depth > 10) {
-          return '[Max Depth]';
+      // Directly extract known fields to avoid recursion issues
+      const plainRows = (result.results as any[]).map(row => {
+        if (!row || typeof row !== 'object') {
+          return {};
         }
         
-        if (value === null || value === undefined) {
-          return value;
-        }
+        // Directly extract known fields from D1 result
+        // This avoids any potential circular references or proxy issues
+        const safeRow: any = {};
+        const fields = ['id', 'user_id', 'title', 'description', 'start_datetime', 'deadline_datetime', 
+                       'priority', 'status', 'is_recurring', 'recurrence_rule_id', 'is_archived', 
+                       'created_at', 'updated_at', 'tag_ids', 'tag_names', 'tag_colors',
+                       'share_owner_id', 'share_permission', 'shared_by_email', 'shared_by_name'];
         
-        // Handle primitives
-        if (typeof value !== 'object') {
-          return value;
-        }
-        
-        // Handle Date
-        if (value instanceof Date) {
-          return value.toISOString();
-        }
-        
-        // Handle arrays
-        if (Array.isArray(value)) {
-          return value.map(item => safeConvert(item, depth + 1));
-        }
-        
-        // Handle objects - check for circular references
-        if (visited.has(value)) {
-          return '[Circular Reference]';
-        }
-        
-        try {
-          visited.add(value);
-          const plain: any = {};
-          for (const key in value) {
-            if (Object.prototype.hasOwnProperty.call(value, key)) {
-              try {
-                plain[key] = safeConvert(value[key], depth + 1);
-              } catch {
-                plain[key] = '[Conversion Error]';
+        for (const key of fields) {
+          try {
+            // Use direct property access with try-catch to handle any proxy/getter issues
+            if (key in row) {
+              const val = row[key];
+              // Convert to primitive types to avoid any object references
+              if (val === null || val === undefined) {
+                safeRow[key] = val;
+              } else if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+                safeRow[key] = val;
+              } else {
+                // For any other type, convert to string
+                safeRow[key] = String(val);
               }
             }
+          } catch {
+            // Skip this field if access fails
+            continue;
           }
-          visited.delete(value);
-          return plain;
+        }
+        
+        return safeRow;
+      });
+      
+      // Directly create Task objects without using mapRowToTask to avoid recursion
+      // This is a simplified version that directly extracts fields
+      const safeGet = (obj: any, key: string, defaultValue: any = null) => {
+        try {
+          if (obj && typeof obj === 'object' && key in obj) {
+            const value = obj[key];
+            return value === null || value === undefined ? defaultValue : value;
+          }
+          return defaultValue;
         } catch {
-          return String(value);
+          return defaultValue;
         }
       };
       
-      const plainRows = (result.results as any[]).map(row => {
-        try {
-          return safeConvert(row);
-        } catch (error) {
-          // If conversion fails, create minimal safe object
-          const safeRow: any = {};
-          try {
-            if (row && typeof row === 'object') {
-              for (const key of ['id', 'user_id', 'title', 'description', 'start_datetime', 'deadline_datetime', 'priority', 'status', 'is_recurring', 'recurrence_rule_id', 'is_archived', 'created_at', 'updated_at', 'tag_ids', 'tag_names', 'tag_colors']) {
-                try {
-                  if (key in row) {
-                    const val = row[key];
-                    safeRow[key] = val === null || val === undefined ? val : String(val);
-                  }
-                } catch {
-                  // Skip this key if access fails
-                }
-              }
-            }
-          } catch {
-            // If all else fails, return empty object
-          }
-          return safeRow;
-        }
-      });
-      
       return plainRows.map(row => {
-        try {
-          // Ensure row is a plain object before mapping
-          const safeRow = row && typeof row === 'object' ? { ...row } : row;
-          return this.mapRowToTask(safeRow);
-        } catch (error: any) {
-          // Safe error logging to avoid recursion
-          let errorMsg = 'Unknown mapping error';
-          let rowId = 'unknown';
-          
-          try {
-            errorMsg = error?.message || String(error) || 'Unknown mapping error';
-            rowId = row && typeof row === 'object' && 'id' in row ? String(row.id) : 'unknown';
-          } catch {
-            // If we can't extract info, use defaults
-          }
-          
-          console.error('Error mapping task row:', errorMsg, 'Row ID:', rowId);
-          
-          // Return a minimal task object if mapping fails
-          // Safely extract values to avoid proxy/getter issues
-          const safeGet = (obj: any, key: string, defaultValue: any = null) => {
-            try {
-              if (obj && typeof obj === 'object' && key in obj) {
-                const value = obj[key];
-                return value === null || value === undefined ? defaultValue : value;
-              }
-              return defaultValue;
-            } catch {
-              return defaultValue;
-            }
-          };
-          
+        if (!row || typeof row !== 'object') {
+          // Return minimal task if row is invalid
           return {
+            id: '',
+            user_id: '',
+            title: 'Invalid task',
+            start_datetime: new Date().toISOString(),
+            priority: 'medium' as TaskPriority,
+            status: 'planned' as TaskStatus,
+            is_recurring: false,
+            is_archived: false,
+            tags: [],
+          } as Task;
+        }
+        
+        try {
+          // Directly extract and convert all fields to avoid recursion
+          const task: Task = {
             id: String(safeGet(row, 'id', '')),
             user_id: String(safeGet(row, 'user_id', '')),
             title: String(safeGet(row, 'title', 'Untitled')),
@@ -259,13 +219,80 @@ export class TaskService {
             created_at: safeGet(row, 'created_at') ? String(safeGet(row, 'created_at')) : undefined,
             updated_at: safeGet(row, 'updated_at') ? String(safeGet(row, 'updated_at')) : undefined,
             tags: [],
+          };
+          
+          // Process tags from GROUP_CONCAT results
+          const tagIds = safeGet(row, 'tag_ids');
+          const tagNames = safeGet(row, 'tag_names');
+          const tagColors = safeGet(row, 'tag_colors');
+          
+          if (tagIds && tagNames && tagColors) {
+            try {
+              const idsStr = String(tagIds).trim();
+              const namesStr = String(tagNames).trim();
+              const colorsStr = String(tagColors).trim();
+              
+              if (idsStr && namesStr && colorsStr) {
+                const ids = idsStr.split(',').filter(id => id && id.trim());
+                const names = namesStr.split(',').filter(name => name && name.trim());
+                const colors = colorsStr.split(',').filter(color => color && color.trim());
+                
+                if (ids.length > 0 && ids.length === names.length && ids.length === colors.length) {
+                  task.tags = ids.slice(0, 50).map((id, index) => ({
+                    id: id.trim(),
+                    name: names[index]?.trim() || '',
+                    color: colors[index]?.trim() || '#000000',
+                    user_id: String(safeGet(row, 'user_id', '')),
+                  }));
+                }
+              }
+            } catch {
+              // If tag parsing fails, leave tags as empty array
+              task.tags = [];
+            }
+          }
+          
+          // Add shared task metadata if present
+          const shareOwnerId = safeGet(row, 'share_owner_id');
+          if (shareOwnerId) {
+            task.is_shared = true;
+            const sharedByEmail = safeGet(row, 'shared_by_email');
+            const sharedByName = safeGet(row, 'shared_by_name');
+            const sharePermission = safeGet(row, 'share_permission');
+            
+            if (sharedByEmail) {
+              task.shared_by = String(sharedByEmail);
+            }
+            if (sharedByName) {
+              task.shared_by_name = String(sharedByName);
+            }
+            if (sharePermission) {
+              task.permission = String(sharePermission) as SharePermission;
+            }
+          }
+          
+          return task;
+        } catch (error: any) {
+          // If mapping fails, return minimal task
+          const errorMsg = error?.message || String(error) || 'Unknown error';
+          console.error('Error creating task from row:', errorMsg.substring(0, 100));
+          
+          return {
+            id: String(safeGet(row, 'id', '')),
+            user_id: String(safeGet(row, 'user_id', '')),
+            title: String(safeGet(row, 'title', 'Untitled')),
+            start_datetime: String(safeGet(row, 'start_datetime', new Date().toISOString())),
+            priority: 'medium' as TaskPriority,
+            status: 'planned' as TaskStatus,
+            is_recurring: false,
+            is_archived: false,
+            tags: [],
           } as Task;
         }
       });
     } catch (error: any) {
       // Safe error logging to avoid recursion
       const errorMsg = error?.message || String(error);
-      const errorName = error?.name || 'Error';
       const errorStack = error?.stack ? String(error.stack).substring(0, 500) : undefined;
       
       console.error('Error in getTasks:', errorMsg);

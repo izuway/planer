@@ -58,6 +58,7 @@ const safeStringify = (obj: any, maxDepth: number = 3, currentDepth: number = 0,
 
 /**
  * Safely log an object to console, handling circular references
+ * Simplified version to avoid recursion
  */
 const safeLog = (label: string, obj: any): void => {
   try {
@@ -71,39 +72,40 @@ const safeLog = (label: string, obj: any): void => {
       return;
     }
     
-    // Try JSON.stringify first with a replacer to handle circular refs
+    // For objects, try to extract simple properties only
+    // Avoid deep serialization that can cause recursion
     try {
-      const seen = new WeakSet();
-      const str = JSON.stringify(obj, (key, value) => {
-        if (typeof value === 'object' && value !== null) {
-          if (seen.has(value)) {
-            return '[Circular]';
-          }
-          seen.add(value);
-        }
-        return value;
-      }, 2);
+      const simpleObj: any = {};
+      const keys = Object.keys(obj).slice(0, 10); // Limit to 10 keys
       
-      if (str && str.length < 1000) {
-        // Only parse if string is not too long
+      for (const key of keys) {
         try {
-          console.error(label, JSON.parse(str));
+          const value = obj[key];
+          // Only extract primitive values to avoid recursion
+          if (value === null || value === undefined) {
+            simpleObj[key] = value;
+          } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            simpleObj[key] = value;
+          } else if (typeof value === 'object') {
+            // For nested objects, just indicate type
+            simpleObj[key] = Array.isArray(value) ? `[Array(${value.length})]` : '[Object]';
+          } else {
+            simpleObj[key] = String(value).substring(0, 50);
+          }
         } catch {
-          console.error(label, str);
+          simpleObj[key] = '[Error reading]';
         }
-      } else {
-        // If too long, just log the string representation
-        console.error(label, str ? str.substring(0, 500) + '...' : '[Too large to display]');
       }
+      
+      console.error(label, simpleObj);
     } catch {
-      // If JSON.stringify fails, use safe stringify (but limit output)
-      const str = safeStringify(obj, 2);
-      console.error(label, str.length > 500 ? str.substring(0, 500) + '...' : str);
+      // If all else fails, just log a simple message
+      console.error(label, '[Object - could not serialize]');
     }
   } catch (error) {
     // Last resort - just log the error message
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(label, '[Error logging object]', errorMsg);
+    console.error(label, '[Error logging object]', errorMsg.substring(0, 100));
   }
 };
 
