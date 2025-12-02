@@ -12,6 +12,7 @@ import {
   Typography,
   Stack,
   Alert,
+  MenuItem,
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import type { RecurrenceRule, RecurrenceType, RecurrenceEndType } from '../../types';
@@ -43,6 +44,10 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
   const [interval, setInterval] = useState<number>(value?.interval || 1);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(value?.days_of_week || []);
   const [dayOfMonth, setDayOfMonth] = useState<number | undefined>(value?.day_of_month);
+  const [monthlyType, setMonthlyType] = useState<'day' | 'weekday'>(value?.week_of_month ? 'weekday' : 'day');
+  const [weekOfMonth, setWeekOfMonth] = useState<number | undefined>(value?.week_of_month);
+  const [dayOfWeekForMonth, setDayOfWeekForMonth] = useState<number | undefined>(value?.day_of_week_for_month);
+  const [customUnit, setCustomUnit] = useState<'hours' | 'days' | 'weeks' | 'months'>(value?.custom_unit || 'days');
   const [endType, setEndType] = useState<RecurrenceEndType>(value?.end_type || 'never');
   const [endDate, setEndDate] = useState<Date | null>(
     value?.end_date ? new Date(value.end_date) : null
@@ -69,6 +74,10 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
     setInterval(formValue.interval);
     setDaysOfWeek(formValue.days_of_week || []);
     setDayOfMonth(formValue.day_of_month);
+    setMonthlyType(formValue.week_of_month ? 'weekday' : 'day');
+    setWeekOfMonth(formValue.week_of_month);
+    setDayOfWeekForMonth(formValue.day_of_week_for_month);
+    setCustomUnit(formValue.custom_unit || 'days');
     setEndType(formValue.end_type);
     setEndDate(formValue.end_date ? new Date(formValue.end_date) : null);
     setEndCount(formValue.end_count);
@@ -80,14 +89,17 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
       type,
       interval,
       days_of_week: type === 'weekly' ? daysOfWeek : undefined,
-      day_of_month: type === 'monthly' ? dayOfMonth : undefined,
+      day_of_month: type === 'monthly' && monthlyType === 'day' ? dayOfMonth : undefined,
+      week_of_month: type === 'monthly' && monthlyType === 'weekday' ? weekOfMonth : undefined,
+      day_of_week_for_month: type === 'monthly' && monthlyType === 'weekday' ? dayOfWeekForMonth : undefined,
+      custom_unit: type === 'custom' ? customUnit : undefined,
       end_type: endType,
       end_date: endType === 'date' && endDate ? endDate.toISOString() : undefined,
       end_count: endType === 'count' ? endCount : undefined,
     };
 
     onChange(rule);
-  }, [type, interval, daysOfWeek, dayOfMonth, endType, endDate, endCount, onChange]);
+  }, [type, interval, daysOfWeek, dayOfMonth, monthlyType, weekOfMonth, dayOfWeekForMonth, customUnit, endType, endDate, endCount, onChange]);
 
   const handleDayToggle = (day: number) => {
     setDaysOfWeek((prev) => {
@@ -132,6 +144,8 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
               ? 'Каждые N месяцев'
               : type === 'yearly'
               ? 'Каждые N лет'
+              : type === 'custom'
+              ? `Каждые N ${customUnit === 'hours' ? 'часов' : customUnit === 'days' ? 'дней' : customUnit === 'weeks' ? 'недель' : 'месяцев'}`
               : 'Кастомный интервал'
           }
         />
@@ -141,7 +155,7 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
       {type === 'weekly' && (
         <Box>
           <Typography variant="subtitle2" gutterBottom>
-            Дни недели
+            Дни недели *
           </Typography>
           <FormGroup>
             <Box display="flex" flexWrap="wrap" gap={1}>
@@ -160,26 +174,99 @@ export const RecurrenceRuleForm: React.FC<RecurrenceRuleFormProps> = ({ value, o
             </Box>
           </FormGroup>
           {daysOfWeek.length === 0 && (
-            <Alert severity="warning" sx={{ mt: 1 }}>
-              Выберите хотя бы один день недели
+            <Alert severity="error" sx={{ mt: 1 }}>
+              Необходимо выбрать хотя бы один день недели
             </Alert>
           )}
         </Box>
       )}
 
-      {/* Day of Month (for monthly) */}
+      {/* Monthly recurrence options */}
       {type === 'monthly' && (
+        <Box>
+          <FormControl component="fieldset" sx={{ mb: 2 }}>
+            <FormLabel component="legend">Тип ежемесячного повторения</FormLabel>
+            <RadioGroup 
+              value={monthlyType} 
+              onChange={(e) => {
+                setMonthlyType(e.target.value as 'day' | 'weekday');
+                if (e.target.value === 'day') {
+                  setWeekOfMonth(undefined);
+                  setDayOfWeekForMonth(undefined);
+                } else {
+                  setDayOfMonth(undefined);
+                }
+              }}
+            >
+              <FormControlLabel value="day" control={<Radio />} label="По дню месяца (например, 5-е число)" />
+              <FormControlLabel value="weekday" control={<Radio />} label="По дню недели (например, второй понедельник)" />
+            </RadioGroup>
+          </FormControl>
+
+          {monthlyType === 'day' && (
+            <TextField
+              label="День месяца"
+              type="number"
+              value={dayOfMonth || ''}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setDayOfMonth(val >= 1 && val <= 31 ? val : undefined);
+              }}
+              inputProps={{ min: 1, max: 31 }}
+              helperText="Число от 1 до 31"
+              required
+            />
+          )}
+
+          {monthlyType === 'weekday' && (
+            <Stack spacing={2}>
+              <TextField
+                select
+                label="Неделя месяца"
+                value={weekOfMonth || ''}
+                onChange={(e) => setWeekOfMonth(parseInt(e.target.value))}
+                required
+                fullWidth
+              >
+                <MenuItem value={1}>Первая</MenuItem>
+                <MenuItem value={2}>Вторая</MenuItem>
+                <MenuItem value={3}>Третья</MenuItem>
+                <MenuItem value={4}>Четвертая</MenuItem>
+                <MenuItem value={5}>Последняя</MenuItem>
+              </TextField>
+              <TextField
+                select
+                label="День недели"
+                value={dayOfWeekForMonth !== undefined ? dayOfWeekForMonth : ''}
+                onChange={(e) => setDayOfWeekForMonth(parseInt(e.target.value))}
+                required
+                fullWidth
+              >
+                {DAYS_OF_WEEK.map((day) => (
+                  <MenuItem key={day.value} value={day.value}>
+                    {day.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+          )}
+        </Box>
+      )}
+
+      {/* Custom unit (for custom recurrence) */}
+      {type === 'custom' && (
         <TextField
-          label="День месяца"
-          type="number"
-          value={dayOfMonth || ''}
-          onChange={(e) => {
-            const val = parseInt(e.target.value);
-            setDayOfMonth(val >= 1 && val <= 31 ? val : undefined);
-          }}
-          inputProps={{ min: 1, max: 31 }}
-          helperText="Число от 1 до 31"
-        />
+          select
+          label="Единица измерения"
+          value={customUnit}
+          onChange={(e) => setCustomUnit(e.target.value as 'hours' | 'days' | 'weeks' | 'months')}
+          fullWidth
+        >
+          <MenuItem value="hours">Часы</MenuItem>
+          <MenuItem value="days">Дни</MenuItem>
+          <MenuItem value="weeks">Недели</MenuItem>
+          <MenuItem value="months">Месяцы</MenuItem>
+        </TextField>
       )}
 
       {/* End Type */}

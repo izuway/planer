@@ -105,6 +105,9 @@ export interface RecurrenceRule {
   interval: number;
   days_of_week?: number[];     // 0 = Monday, 6 = Sunday
   day_of_month?: number;
+  week_of_month?: number;      // 1-5 for "first Monday", "second Tuesday", etc.
+  day_of_week_for_month?: number; // 0-6 for day of week when using week_of_month
+  custom_unit?: 'hours' | 'days' | 'weeks' | 'months'; // Unit for custom recurrence
   end_type: RecurrenceEndType;
   end_date?: string;
   end_count?: number;
@@ -223,6 +226,7 @@ export interface TaskFilters {
   page?: number;
   limit?: number;
 }
+
 
 
 

@@ -22,7 +22,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ru } from 'date-fns/locale';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save as SaveIcon, Cancel as CancelIcon } from '@mui/icons-material';
-import { createTask, updateTask, getTaskById, getTags } from '../../utils/api';
+import { createTask, updateTask, getTaskById, getTags, getRecurrenceRule, updateRecurrenceRule, createRecurrenceRule, generateTaskInstances } from '../../utils/api';
 import type { CreateTaskDTO, UpdateTaskDTO, Tag, TaskPriority, TaskStatus, RecurrenceRule } from '../../types';
 import { RecurrenceRuleForm } from './RecurrenceRuleForm';
 
@@ -80,7 +80,19 @@ export const TaskForm: React.FC = () => {
       setStatus(task.status);
       setSelectedTags(task.tags || []);
       setIsRecurring(task.is_recurring);
-      // Note: Recurrence rule should be loaded separately if needed for editing
+      
+      // Load recurrence rule if task is recurring
+      if (task.is_recurring) {
+        try {
+          const rule = await getRecurrenceRule(taskId);
+          if (rule) {
+            setRecurrenceRule(rule);
+          }
+        } catch (err) {
+          console.error('Error loading recurrence rule:', err);
+          // Don't fail task loading if rule loading fails
+        }
+      }
     } catch (err: any) {
       console.error('Error loading task:', err);
       setError('Не удалось загрузить задачу');
@@ -109,6 +121,26 @@ export const TaskForm: React.FC = () => {
       setDateError('');
     }
 
+    // Validate recurrence rule
+    if (isRecurring && recurrenceRule) {
+      if (recurrenceRule.type === 'weekly' && (!recurrenceRule.days_of_week || recurrenceRule.days_of_week.length === 0)) {
+        setError('Для еженедельного повторения необходимо выбрать хотя бы один день недели');
+        isValid = false;
+      }
+      if (recurrenceRule.type === 'monthly') {
+        const hasDayOfMonth = recurrenceRule.day_of_month !== undefined;
+        const hasWeekOfMonth = recurrenceRule.week_of_month !== undefined && recurrenceRule.day_of_week_for_month !== undefined;
+        if (!hasDayOfMonth && !hasWeekOfMonth) {
+          setError('Для ежемесячного повторения необходимо указать день месяца или день недели');
+          isValid = false;
+        }
+      }
+      if (recurrenceRule.type === 'custom' && !recurrenceRule.custom_unit) {
+        setError('Для кастомного повторения необходимо указать единицу измерения');
+        isValid = false;
+      }
+    }
+
     return isValid;
   };
 
@@ -134,7 +166,42 @@ export const TaskForm: React.FC = () => {
           tag_ids: selectedTags.map(t => t.id),
         };
         
-        await updateTask(id, updates);
+        const updatedTask = await updateTask(id, updates);
+        
+        // Handle recurrence rule updates
+        if (isRecurring && recurrenceRule) {
+          try {
+            const existingRule = await getRecurrenceRule(id);
+            if (existingRule) {
+              // Update existing rule
+              await updateRecurrenceRule(id, recurrenceRule);
+            } else {
+              // Create new rule
+              await createRecurrenceRule(id, recurrenceRule);
+            }
+            // Generate instances if needed
+            try {
+              await generateTaskInstances(id, 30, 90);
+            } catch (err) {
+              console.error('Error generating instances:', err);
+              // Don't fail task update if instance generation fails
+            }
+          } catch (err: any) {
+            console.error('Error updating recurrence rule:', err);
+            setError('Задача обновлена, но не удалось обновить правило повторения');
+          }
+        } else if (!isRecurring) {
+          // If recurring was disabled, try to delete the rule
+          try {
+            const existingRule = await getRecurrenceRule(id);
+            if (existingRule) {
+              // Rule deletion will be handled by backend when is_recurring is set to false
+              // We just need to update the task
+            }
+          } catch (err) {
+            // Ignore errors when checking for rule
+          }
+        }
       } else {
         const taskData: CreateTaskDTO = {
           title: title.trim(),
@@ -148,7 +215,17 @@ export const TaskForm: React.FC = () => {
           recurrence_rule: isRecurring && recurrenceRule ? recurrenceRule : undefined,
         };
         
-        await createTask(taskData);
+        const newTask = await createTask(taskData);
+        
+        // Generate instances automatically for new recurring tasks
+        if (isRecurring && newTask.is_recurring) {
+          try {
+            await generateTaskInstances(newTask.id, 30, 90);
+          } catch (err) {
+            console.error('Error generating instances:', err);
+            // Don't fail task creation if instance generation fails
+          }
+        }
       }
 
       navigate('/tasks');
@@ -293,18 +370,16 @@ export const TaskForm: React.FC = () => {
                   }
                 />
 
-                {/* Recurring (only for new tasks) */}
-                {!isEditMode && (
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={isRecurring}
-                        onChange={(e) => setIsRecurring(e.target.checked)}
-                      />
-                    }
-                    label="Повторяющаяся задача"
-                  />
-                )}
+                {/* Recurring */}
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                    />
+                  }
+                  label="Повторяющаяся задача"
+                />
 
                 {isRecurring && (
                   <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>

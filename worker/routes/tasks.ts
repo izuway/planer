@@ -830,6 +830,94 @@ tasks.get('/:id/instances', async (c) => {
   }
 });
 
+/**
+ * PATCH /api/tasks/instances/:instanceId
+ * Update a task instance
+ */
+tasks.patch('/instances/:instanceId', async (c) => {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const instanceId = c.req.param('instanceId');
+  const instanceService = new TaskInstanceService(c.env.DB);
+
+  try {
+    const updates = await c.req.json();
+    const instance = await instanceService.updateInstance(instanceId, user.uid, updates);
+    
+    if (!instance) {
+      return c.json(
+        {
+          success: false,
+          error: 'Instance not found or no permission',
+        },
+        404
+      );
+    }
+
+    return c.json({
+      success: true,
+      data: instance,
+      message: 'Instance updated successfully',
+    });
+  } catch (error: any) {
+    console.error('Error updating instance:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to update instance',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * DELETE /api/tasks/instances/:instanceId
+ * Delete a task instance
+ */
+tasks.delete('/instances/:instanceId', async (c) => {
+  const user = c.get('user');
+  if (!user) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const instanceId = c.req.param('instanceId');
+  const instanceService = new TaskInstanceService(c.env.DB);
+
+  try {
+    const success = await instanceService.deleteInstance(instanceId, user.uid);
+    
+    if (!success) {
+      return c.json(
+        {
+          success: false,
+          error: 'Instance not found or no permission',
+        },
+        404
+      );
+    }
+
+    return c.json({
+      success: true,
+      message: 'Instance deleted successfully',
+    });
+  } catch (error: any) {
+    console.error('Error deleting instance:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to delete instance',
+        message: error.message,
+      },
+      500
+    );
+  }
+});
+
 export default tasks;
 
 

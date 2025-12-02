@@ -694,6 +694,46 @@ export const getTaskInstances = async (taskId: string): Promise<TaskInstance[]> 
   return data.data || [];
 };
 
+/**
+ * Update a task instance
+ */
+export const updateTaskInstance = async (
+  instanceId: string,
+  updates: {
+    status?: string;
+    modified_title?: string;
+    modified_description?: string;
+    modified_time?: string;
+  }
+): Promise<TaskInstance> => {
+  const response = await authenticatedFetch(`/api/tasks/instances/${instanceId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+  
+  const data: ApiResponse<TaskInstance> = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'Failed to update instance');
+  }
+  
+  if (!data.data) throw new Error('Failed to update instance');
+  return data.data;
+};
+
+/**
+ * Delete a task instance
+ */
+export const deleteTaskInstance = async (instanceId: string): Promise<void> => {
+  const response = await authenticatedFetch(`/api/tasks/instances/${instanceId}`, {
+    method: 'DELETE',
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to delete instance');
+  }
+};
+
 // ============================================================
 // TAGS API
 // ============================================================

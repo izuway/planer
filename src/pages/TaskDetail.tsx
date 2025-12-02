@@ -16,6 +16,7 @@ import {
   MenuItem,
   Stack,
   Paper,
+  TextField,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -25,6 +26,8 @@ import {
   Share as ShareIcon,
   ArrowBack as ArrowBackIcon,
   MoreVert as MoreVertIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { 
   getTaskById, 
@@ -36,6 +39,8 @@ import {
   getTaskInstances,
   deleteRecurrenceRule,
   generateTaskInstances,
+  updateTaskInstance,
+  deleteTaskInstance,
 } from '../utils/api';
 import type { Task, TaskHistory, RecurrenceRule, TaskInstance } from '../types';
 
@@ -49,6 +54,8 @@ export const TaskDetail: React.FC = () => {
   const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | null>(null);
   const [instances, setInstances] = useState<TaskInstance[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [instancePage, setInstancePage] = useState(1);
+  const instancesPerPage = 20;
 
   useEffect(() => {
     if (id) {
@@ -190,6 +197,34 @@ export const TaskDetail: React.FC = () => {
     } catch (err: any) {
       console.error('Error deleting recurrence rule:', err);
       alert('Не удалось удалить правило повторения');
+    }
+  };
+
+  const handleInstanceStatusChange = async (instanceId: string, newStatus: TaskStatus) => {
+    if (!id) return;
+    
+    try {
+      await updateTaskInstance(instanceId, { status: newStatus });
+      await loadRecurrenceData();
+    } catch (err: any) {
+      console.error('Error updating instance status:', err);
+      alert('Не удалось обновить статус инстанса');
+    }
+  };
+
+  const handleDeleteInstance = async (instanceId: string) => {
+    if (!id) return;
+    
+    if (!confirm('Вы уверены, что хотите удалить этот инстанс?')) {
+      return;
+    }
+
+    try {
+      await deleteTaskInstance(instanceId);
+      await loadRecurrenceData();
+    } catch (err: any) {
+      console.error('Error deleting instance:', err);
+      alert('Не удалось удалить инстанс');
     }
   };
 
@@ -627,33 +662,77 @@ export const TaskDetail: React.FC = () => {
                 Инстансы еще не сгенерированы. Нажмите кнопку выше для генерации.
               </Typography>
             ) : (
-              <Stack spacing={1} sx={{ maxHeight: 400, overflow: 'auto' }}>
-                {instances.slice(0, 20).map((instance) => (
-                  <Paper key={instance.id} elevation={0} sx={{ p: 1.5, bgcolor: 'background.default' }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center">
-                      <Typography variant="body2">
-                        {new Date(instance.scheduled_date).toLocaleString('ru-RU', {
-                          dateStyle: 'long',
-                          timeStyle: 'short',
-                        })}
-                        {instance.is_modified && (
-                          <Chip label="Изменено" size="small" sx={{ ml: 1 }} />
-                        )}
-                      </Typography>
-                      <Chip
-                        label={getStatusLabel(instance.status)}
-                        size="small"
-                        color={getStatusColor(instance.status) as any}
-                      />
-                    </Box>
-                  </Paper>
-                ))}
-                {instances.length > 20 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
-                    И еще {instances.length - 20} повторений...
-                  </Typography>
+              <>
+                <Stack spacing={1} sx={{ maxHeight: 400, overflow: 'auto' }}>
+                  {instances
+                    .slice((instancePage - 1) * instancesPerPage, instancePage * instancesPerPage)
+                    .map((instance) => (
+                    <Paper key={instance.id} elevation={0} sx={{ p: 1.5, bgcolor: 'background.default' }}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
+                        <Box flexGrow={1}>
+                          <Typography variant="body2">
+                            {new Date(instance.scheduled_date).toLocaleString('ru-RU', {
+                              dateStyle: 'long',
+                              timeStyle: 'short',
+                            })}
+                            {instance.is_modified && (
+                              <Chip label="Изменено" size="small" sx={{ ml: 1 }} />
+                            )}
+                          </Typography>
+                          {instance.modified_title && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Название: {instance.modified_title}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Box display="flex" gap={1} alignItems="center">
+                          <TextField
+                            select
+                            size="small"
+                            value={instance.status}
+                            onChange={(e) => handleInstanceStatusChange(instance.id, e.target.value as TaskStatus)}
+                            sx={{ minWidth: 150 }}
+                          >
+                            <MenuItem value="planned">Запланирована</MenuItem>
+                            <MenuItem value="in_progress">В работе</MenuItem>
+                            <MenuItem value="done">Выполнена</MenuItem>
+                            <MenuItem value="skipped">Пропущена</MenuItem>
+                            <MenuItem value="canceled">Отменена</MenuItem>
+                          </TextField>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteInstance(instance.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  ))}
+                </Stack>
+                {instances.length > instancesPerPage && (
+                  <Box display="flex" justifyContent="center" alignItems="center" gap={2} mt={2}>
+                    <Button
+                      size="small"
+                      disabled={instancePage === 1}
+                      onClick={() => setInstancePage(prev => Math.max(1, prev - 1))}
+                    >
+                      Назад
+                    </Button>
+                    <Typography variant="body2" color="text.secondary">
+                      Страница {instancePage} из {Math.ceil(instances.length / instancesPerPage)}
+                    </Typography>
+                    <Button
+                      size="small"
+                      disabled={instancePage >= Math.ceil(instances.length / instancesPerPage)}
+                      onClick={() => setInstancePage(prev => prev + 1)}
+                    >
+                      Вперед
+                    </Button>
+                  </Box>
                 )}
-              </Stack>
+              </>
             )}
           </CardContent>
         </Card>

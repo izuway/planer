@@ -64,9 +64,18 @@ export class TaskService {
       }
       
       if (filters.search) {
-        query += ` AND (t.title LIKE ? OR t.description LIKE ?)`;
+        query += ` AND (
+          t.title LIKE ? OR 
+          t.description LIKE ? OR
+          t.id IN (
+            SELECT DISTINCT tt.task_id 
+            FROM task_tags tt 
+            INNER JOIN tags tag ON tt.tag_id = tag.id 
+            WHERE tag.name LIKE ? AND tag.user_id = ?
+          )
+        )`;
         const searchTerm = `%${filters.search}%`;
-        params.push(searchTerm, searchTerm);
+        params.push(searchTerm, searchTerm, searchTerm, userId);
       }
       
       if (filters.only_shared) {

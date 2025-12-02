@@ -23,8 +23,9 @@ export class RecurrenceService {
         `
         INSERT INTO recurrence_rules (
           id, task_id, type, interval, days_of_week, day_of_month,
+          week_of_month, day_of_week_for_month, custom_unit,
           end_type, end_date, end_count, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
       .bind(
@@ -34,6 +35,9 @@ export class RecurrenceService {
         rule.interval,
         rule.days_of_week ? JSON.stringify(rule.days_of_week) : null,
         rule.day_of_month || null,
+        rule.week_of_month || null,
+        rule.day_of_week_for_month || null,
+        rule.custom_unit || null,
         rule.end_type,
         rule.end_date || null,
         rule.end_count || null,
@@ -98,6 +102,9 @@ export class RecurrenceService {
       interval: updates.interval ?? currentRule.interval,
       days_of_week: updates.days_of_week ?? currentRule.days_of_week,
       day_of_month: updates.day_of_month ?? currentRule.day_of_month,
+      week_of_month: updates.week_of_month ?? currentRule.week_of_month,
+      day_of_week_for_month: updates.day_of_week_for_month ?? currentRule.day_of_week_for_month,
+      custom_unit: updates.custom_unit ?? currentRule.custom_unit,
       end_type: updates.end_type ?? currentRule.end_type,
       end_date: updates.end_date ?? currentRule.end_date,
       end_count: updates.end_count ?? currentRule.end_count,
@@ -114,6 +121,9 @@ export class RecurrenceService {
           interval = ?,
           days_of_week = ?,
           day_of_month = ?,
+          week_of_month = ?,
+          day_of_week_for_month = ?,
+          custom_unit = ?,
           end_type = ?,
           end_date = ?,
           end_count = ?
@@ -125,6 +135,9 @@ export class RecurrenceService {
         updatedRule.interval,
         updatedRule.days_of_week ? JSON.stringify(updatedRule.days_of_week) : null,
         updatedRule.day_of_month || null,
+        updatedRule.week_of_month || null,
+        updatedRule.day_of_week_for_month || null,
+        updatedRule.custom_unit || null,
         updatedRule.end_type,
         updatedRule.end_date || null,
         updatedRule.end_count || null,
@@ -160,8 +173,21 @@ export class RecurrenceService {
       throw new Error('Weekly recurrence requires at least one day of week');
     }
 
-    if (rule.type === 'monthly' && !rule.day_of_month) {
-      throw new Error('Monthly recurrence requires day_of_month');
+    if (rule.type === 'monthly' && !rule.day_of_month && !rule.week_of_month) {
+      throw new Error('Monthly recurrence requires either day_of_month or week_of_month');
+    }
+
+    if (rule.type === 'monthly' && rule.week_of_month) {
+      if (!rule.day_of_week_for_month && rule.week_of_month !== undefined) {
+        throw new Error('Monthly recurrence with week_of_month requires day_of_week_for_month');
+      }
+      if (rule.week_of_month < 1 || rule.week_of_month > 5) {
+        throw new Error('week_of_month must be between 1 and 5');
+      }
+    }
+
+    if (rule.type === 'custom' && !rule.custom_unit) {
+      throw new Error('Custom recurrence requires custom_unit');
     }
 
     if (rule.end_type === 'date' && !rule.end_date) {
@@ -183,6 +209,9 @@ export class RecurrenceService {
       interval: row.interval,
       days_of_week: row.days_of_week ? JSON.parse(row.days_of_week) : undefined,
       day_of_month: row.day_of_month || undefined,
+      week_of_month: row.week_of_month || undefined,
+      day_of_week_for_month: row.day_of_week_for_month || undefined,
+      custom_unit: row.custom_unit || undefined,
       end_type: row.end_type as RecurrenceEndType,
       end_date: row.end_date || undefined,
       end_count: row.end_count || undefined,
@@ -234,7 +263,27 @@ export class RecurrenceService {
         break;
 
       case 'monthly':
-        if (rule.day_of_month) {
+        if (rule.week_of_month && rule.day_of_week_for_month !== undefined) {
+          // Calculate "N-th day of week in month" (e.g., "second Monday")
+          next.setMonth(next.getMonth() + rule.interval);
+          next.setDate(1); // Start from first day of month
+          
+          // Find first occurrence of the target day of week
+          const targetDayOfWeek = rule.day_of_week_for_month; // 0 = Monday, 6 = Sunday
+          const firstDayOfWeek = next.getDay();
+          const daysToAdd = (targetDayOfWeek - firstDayOfWeek + 7) % 7;
+          next.setDate(1 + daysToAdd);
+          
+          // Add weeks for week_of_month (1 = first, 2 = second, etc.)
+          next.setDate(next.getDate() + (rule.week_of_month - 1) * 7);
+          
+          // If we went past the month, go to last occurrence
+          const month = next.getMonth();
+          next.setDate(next.getDate() + 7);
+          if (next.getMonth() !== month) {
+            next.setDate(next.getDate() - 14); // Go back to last occurrence
+          }
+        } else if (rule.day_of_month) {
           next.setMonth(next.getMonth() + rule.interval);
           next.setDate(rule.day_of_month);
         } else {
@@ -273,9 +322,25 @@ export class RecurrenceService {
         break;
 
       case 'custom':
-        // Custom interval in hours/days/weeks/months
-        // For now, treat as days
-        next.setDate(next.getDate() + rule.interval);
+        // Custom interval with specified unit
+        const unit = rule.custom_unit || 'days';
+        switch (unit) {
+          case 'hours':
+            next.setHours(next.getHours() + rule.interval);
+            break;
+          case 'days':
+            next.setDate(next.getDate() + rule.interval);
+            break;
+          case 'weeks':
+            next.setDate(next.getDate() + rule.interval * 7);
+            break;
+          case 'months':
+            next.setMonth(next.getMonth() + rule.interval);
+            break;
+          default:
+            // Fallback to days
+            next.setDate(next.getDate() + rule.interval);
+        }
         break;
 
       default:
