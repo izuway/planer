@@ -166,7 +166,7 @@ export const TaskForm: React.FC = () => {
           tag_ids: selectedTags.map(t => t.id),
         };
         
-        const updatedTask = await updateTask(id, updates);
+        await updateTask(id, updates);
         
         // Handle recurrence rule updates
         if (isRecurring && recurrenceRule) {

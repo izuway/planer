@@ -26,8 +26,6 @@ import {
   Share as ShareIcon,
   ArrowBack as ArrowBackIcon,
   MoreVert as MoreVertIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { 
   getTaskById, 
@@ -42,7 +40,7 @@ import {
   updateTaskInstance,
   deleteTaskInstance,
 } from '../utils/api';
-import type { Task, TaskHistory, RecurrenceRule, TaskInstance } from '../types';
+import type { Task, TaskHistory, RecurrenceRule, TaskInstance, TaskStatus } from '../types';
 
 export const TaskDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
